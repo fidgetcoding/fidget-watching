@@ -1,3 +1,5 @@
+![fidget-watching](docs/images/banner.png)
+
 # fidget-watching
 
 A fork of [devinilabs/claude-watch](https://github.com/devinilabs/claude-watch). devinilabs built the pipeline. I added the key-free whisper.cpp route, channel and playlist mode, and the fixes in the [changelog](CHANGELOG.md).
@@ -7,6 +9,12 @@ A fork of [devinilabs/claude-watch](https://github.com/devinilabs/claude-watch).
 ```
 /watch https://youtu.be/<lecture> backprop intuition
 ```
+
+More: [ESSENCE.md](ESSENCE.md) · [EVOLUTION.md](EVOLUTION.md)
+
+## Why I forked it
+
+I installed claude-watch and it asked for an API key. My exact reaction: "i thought i have audio downloaders setup so i dont need these stupid keys. dont i already have ffmpeg and whisper?" I did, so now it uses them. Then: "can i do it to a whole youtube cahnnel?" Now it can do that too. Everything else here is devinilabs' work, and it's a great idea.
 
 ## Install
 
@@ -20,7 +28,7 @@ A fork of [devinilabs/claude-watch](https://github.com/devinilabs/claude-watch).
 
 1. Downloads via `yt-dlp` (or accepts a local file).
 2. Detects scene changes with `ffmpeg`. Inserts coverage-floor frames every 45s across long static gaps so a lecture with one slide for 5 minutes still gets ~7 frames, not 1.
-3. Pulls a timestamped transcript — captions first (free), Whisper API (Groq preferred, OpenAI alt) only when missing.
+3. Pulls a timestamped transcript: captions first (free), then local whisper.cpp if you have it, then the Whisper API (Groq preferred, OpenAI alt).
 4. Hands frames + transcript to Claude. Claude `Read`s every frame as an image and writes `notes.md` to a strict template:
    - `## TLDR` — 3-4 sentence synthesis
    - `## Key Concepts` — bulleted with timestamps
@@ -29,7 +37,7 @@ A fork of [devinilabs/claude-watch](https://github.com/devinilabs/claude-watch).
    - `## Diagrams Referenced`, `## Open Questions`
 5. Saves everything to `~/watch/library/<slug>/` — re-running the same URL is a cache hit.
 
-## Why this exists
+## Why upstream built it
 
 `claude-video`'s uniform frame sampling spends the budget poorly on long lectures with slow-changing slides. And answers live in chat, so you can't go back to "the notes from that video." `watch` is opinionated for the tutorial workflow: scene-aware frames, persistent library, structured notes file.
 
@@ -70,8 +78,9 @@ Captions cover the majority of public videos for free. Whisper only kicks in whe
 | Need | Cost |
 |---|---|
 | Download + native captions | free (`yt-dlp` + `ffmpeg`) |
-| Whisper fallback (preferred) | Groq `whisper-large-v3` — cheap, fast |
-| Whisper fallback (alt) | OpenAI `whisper-1` |
+| Whisper fallback, no key (used first) | free: `brew install whisper-cpp`, plus a model at `~/.config/watch/models/ggml-base.en.bin` |
+| Whisper fallback, API (preferred) | Groq `whisper-large-v3`: cheap, fast |
+| Whisper fallback, API (alt) | OpenAI `whisper-1` |
 | Disable Whisper | `--no-whisper` (frames-only when no captions) |
 
 Keys go in `~/.config/watch/.env` (mode 0600).
