@@ -82,9 +82,9 @@ To force a fresh run, delete the `meta.json` in the library dir.
 
 ## Limits
 
-- **Best accuracy: under ~30 minutes** for a single notes pass. Past that, use `--start`/`--end` to focus.
+- **Long videos work, and frames are what they cost.** Scene frames plus one every 45 seconds add up, so past about 30 minutes a single notes pass gets expensive. Use `--start`/`--end` to focus, or raise `--max-gap`.
 - **Hard frame cap: 80** by default. Bump with `--max-frames` (token cost grows linearly).
-- **Whisper upload limit: 25 MB** (~50 min mono 16 kHz). Longer videos need captions.
+- **No transcript length limit.** The Whisper APIs cap uploads at 25 MB (about 50 minutes here), so longer audio goes up in overlapping chunks and comes back as one timeline. Local whisper.cpp has no upload to cap.
 - **No private platforms.** Public URLs and local files only.
 
 ## Develop

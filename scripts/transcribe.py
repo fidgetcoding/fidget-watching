@@ -143,7 +143,7 @@ def fetch_native_captions(video_url: str, work_dir: Path) -> Optional[Path]:
 
 
 def extract_audio_for_whisper(video: Path, out_audio: Path) -> None:
-    """Mono 16kHz audio for Whisper. ~0.5MB/min — well under the 25MB limit for ~50 min."""
+    """Mono 16kHz audio for Whisper, about 0.5 MB/min. The API routes split it past 24 MB."""
     out_audio.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [

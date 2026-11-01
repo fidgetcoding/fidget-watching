@@ -143,7 +143,7 @@ If the user re-watches the same URL, the script reuses the cached download, tran
 - **Setup preflight non-zero** → run `setup.py`, then ask for a key via `AskUserQuestion`.
 - **No transcript** → script emits `transcript_source: none`. Generate notes frames-only and tell the user.
 - **Long video sparse-scan warning** → offer to re-run with `--start`/`--end` focused on the part the user cares about.
-- **Whisper failure** → retry with `--whisper openai` (if Groq failed) or vice versa.
+- **Whisper failure** → retry with `--whisper openai` (if Groq failed) or vice versa. Audio over the 25 MB upload limit is split automatically, so size alone isn't a reason to give up on an API route.
 
 ## Token budget
 
