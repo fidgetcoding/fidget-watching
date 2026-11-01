@@ -42,6 +42,10 @@ def tokens_per_frame(width_px: int, aspect: float = _DEFAULT_ASPECT) -> int:
     return math.ceil(width_px / _PATCH_PX) * math.ceil(height_px / _PATCH_PX)
 
 
+def text_tokens(text: str) -> int:
+    return math.ceil(len(text) / _CHARS_PER_TOKEN)
+
+
 def transcript_tokens(path: Path) -> int:
     """Estimated input tokens for reading a transcript file. 0 if it isn't there."""
     try:

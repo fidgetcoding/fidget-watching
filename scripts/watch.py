@@ -28,6 +28,7 @@ from scripts import resolve as resolve_mod
 from scripts import download as download_mod
 from scripts import transcribe as transcribe_mod
 from scripts import scenes as scenes_mod
+from scripts import sections as sections_mod
 from scripts import frames as frames_mod
 from scripts import setup as setup_mod
 from scripts import channel as channel_mod
@@ -208,6 +209,29 @@ def _run_one_video(source: str, args) -> dict:
         {**fr, "path": f"frames/{fr['path']}"} for fr in raw_frame_records
     ]
 
+    # ---- Long videos: one section at a time ----
+    section_plan: list[dict] = []
+    if not args.no_sections and sections_mod.is_long(window_s, section_minutes=args.section_minutes):
+        window_start = focus[0] if focus else 0.0
+        target_s = args.section_minutes * 60 if args.section_minutes else sections_mod.TARGET_S
+        cuts = sections_mod.plan_cuts(
+            window_start,
+            window_start + window_s,
+            n_frames=len(frame_records),
+            transcript=transcript_for_window,
+            scenes=[{"t": s.t, "score": s.score, "kind": s.kind} for s in capped],
+            target_s=target_s,
+        )
+        section_plan = sections_mod.build_plan(
+            cuts,
+            frames=frame_records,
+            transcript=transcript_for_window,
+            tokens_per_frame=cost["tokens_per_frame"],
+        )
+        sections_mod.write_plan(work, section_plan)
+    else:
+        sections_mod.clear_plan(work)
+
     # ---- Stage 7: emit manifest + meta ----
     (work / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
     lib.write_manifest(
@@ -236,6 +260,7 @@ def _run_one_video(source: str, args) -> dict:
         "scenes_detected": sum(1 for s in capped if s.kind == "detected"),
         "focus": focus,
         "source": source,
+        "section_plan": section_plan,
     }
 
 
@@ -257,6 +282,9 @@ def _print_video_manifest(result: dict, args) -> None:
     print(f"frames_extracted: {len(result['frames'])}")
     print(f"library_dir: {result['library_dir']}")
     print()
+    if result.get("section_plan"):
+        print(sections_mod.format_plan(result["section_plan"], Path(result["library_dir"])))
+        print()
     print("=== frames ===")
     for fr in result["frames"]:
         mm = int(fr["t"]) // 60
@@ -346,6 +374,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--resolution", type=int, default=512, help="frame width in px")
     p.add_argument("--scene-threshold", type=float, default=0.30)
     p.add_argument("--max-gap", type=float, default=45.0, help="coverage floor seconds")
+    p.add_argument("--no-sections", action="store_true",
+                   help="write long videos in one pass instead of section by section")
+    p.add_argument("--section-minutes", type=float, default=None,
+                   help="section length, and the length above which a video gets split")
     p.add_argument("--whisper", choices=["local", "groq", "openai"], help="force Whisper backend")
     p.add_argument("--no-whisper", action="store_true", help="disable Whisper fallback")
     p.add_argument("--out-dir", help="library root (default: ~/watch/library)")

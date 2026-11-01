@@ -65,11 +65,15 @@ Optional flags:
 - `--resolution W` — bump frame width to 1024 px when on-screen text is tiny
 - `--scene-threshold X` — sensitivity (default 0.30; raise for fewer cuts, lower for more)
 - `--max-gap S` — coverage floor in seconds (default 45)
+- `--no-sections` — write a long video in one pass (not recommended, accuracy falls off)
+- `--section-minutes N` — change the section length (default: about 20 minutes, for videos over 30)
 - `--whisper local|groq|openai` — force backend
 - `--no-whisper` — disable Whisper entirely
 - `--out-dir DIR` — override library root
 
 **Tell the user the cost before you read anything.** The script prints `=== cost estimate ===` before it downloads and `=== cost ===` before it extracts frames. Pass on the frame count and token estimate in one line. If it's over 150k tokens, ask with `AskUserQuestion` whether to go ahead, focus with `--start`/`--end`, or set a lower `--max-frames`.
+
+**Long video? If the output has a `=== sections ===` block, follow "Long videos" below instead of Steps 3 to 5.**
 
 **Step 3 — read every frame.** The script ends with a structured `=== frames ===` block listing each frame's path and timestamp. `Read` them all in parallel — they render as images in your context.
 
@@ -81,6 +85,43 @@ Optional flags:
 3. Path to the notes file
 
 Do **not** delete the library dir. It is the artifact.
+
+## Long videos
+
+Over 30 minutes, the script splits the video into sections of about 20 minutes, cutting at pauses and scene changes, and writes `sections.json` in the library dir. Don't read the whole thing in one go. That's where notes get thin and timestamps drift.
+
+1. **One section at a time, in order.** For each section in `sections.json`: `Read` only that section's `frames` and its `transcript_path`, then write `notes_path` using the section template below. If you can spawn subagents, give each section its own, so earlier frames don't crowd out later ones. Hand each one the previous section's `## Section Summary` so the notes connect. An interrupted run keeps the section notes already written, so skip any that exist.
+2. **Check.** Run `python3 "${CLAUDE_SKILL_DIR}/scripts/merge_notes.py" "<library_dir>" --check`. Fix every `ERROR`. Each `WARN` means a long stretch with no notes, or a "Said" line that doesn't match the transcript. Go back to that part of the video and fix what's wrong.
+3. **TLDR.** Read every `## Section Summary` and write `<library_dir>/tldr.md`: 3-4 sentences on the whole video and its single most important takeaway. Write it last, so the end of the video counts as much as the start.
+4. **Merge.** Run `merge_notes.py` again without `--check`. It writes `notes.md`, with the concepts and open questions deduplicated.
+
+Section template. Frame links stay `frames/...`, relative to the library dir, even though the file sits in `sections/`:
+
+````markdown
+## Section Summary
+<3-5 sentences on this section only.>
+
+## Key Concepts
+- **<concept>** — <one-line definition> · `[t=MM:SS]`
+
+## Notes
+
+### [t=MM:SS] <Section title>
+
+![](frames/0001_t00-04.jpg)
+
+**On screen:** <...>
+
+**Said:** <...>
+
+**Synthesis:** <...>
+
+## Code & Commands
+
+## Diagrams Referenced
+
+## Open Questions
+````
 
 ## Notes template (non-negotiable structure)
 
@@ -145,7 +186,6 @@ If the user re-watches the same URL, the script reuses the cached download, tran
 - **Setup preflight non-zero** → run `setup.py`, then ask for a key via `AskUserQuestion`.
 - **`watch.py` exits 5** → the video sits behind a login (usually Instagram). The script's stderr holds the exact fix: one `--cookies-from-browser` line in yt-dlp's config. Relay those steps and ask which browser they use. Don't retry with other flags, don't edit their config without asking, and never read their cookies yourself.
 - **No transcript** → script emits `transcript_source: none`. Generate notes frames-only and tell the user.
-- **Long video sparse-scan warning** → offer to re-run with `--start`/`--end` focused on the part the user cares about.
 - **Whisper failure** → retry with `--whisper openai` (if Groq failed) or vice versa. Audio over the 25 MB upload limit is split automatically, so size alone isn't a reason to give up on an API route.
 
 ## Token budget
