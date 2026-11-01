@@ -61,16 +61,16 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/watch.py" "<source>"
 
 Optional flags:
 - `--start T` / `--end T` — focus on a section (`SS`, `MM:SS`, or `HH:MM:SS`)
-- `--max-frames N` — set the frame budget yourself. By default it scales with length and scene changes: up to 6 frames a minute for the first 15 minutes, 2.5 a minute to the hour, 1.5 a minute after that, and never below one frame every 45 seconds
+- `--max-frames N`: set the frame budget yourself. By default it scales with length and scene changes: up to 6 frames a minute for the first 15 minutes, 2.5 a minute to the hour, 1.5 a minute after that, and never below one frame every 45 seconds
 - `--resolution W` — bump frame width to 1024 px when on-screen text is tiny
 - `--scene-threshold X` — sensitivity (default 0.30; raise for fewer cuts, lower for more)
 - `--max-gap S` — coverage floor in seconds (default 45)
-- `--no-sections` — write a long video in one pass (not recommended, accuracy falls off)
-- `--section-minutes N` — change the section length (default: about 20 minutes, for videos over 30)
+- `--no-sections`: write a long video in one pass (not recommended, accuracy falls off)
+- `--section-minutes N`: change the section length (default: about 20 minutes, for videos over 30)
 - `--whisper local|groq|openai` — force backend
 - `--no-whisper` — disable Whisper entirely
 - `--out-dir DIR` — override library root
-- `--cookies-from-browser BROWSER` — use the user's own browser login for this run. Only with their say-so, see Failure modes
+- `--cookies-from-browser BROWSER`: use the user's own browser login for this run. Only with their say-so, see Failure modes
 
 **Tell the user the cost before you read anything.** The script prints `=== cost estimate ===` before it downloads and `=== cost ===` before it extracts frames. Pass on the frame count and token estimate in one line. If it's over 150k tokens, ask with `AskUserQuestion` whether to go ahead, focus with `--start`/`--end`, or set a lower `--max-frames`.
 
@@ -103,7 +103,7 @@ Section template. Frame links stay `frames/...`, relative to the library dir, ev
 <3-5 sentences on this section only.>
 
 ## Key Concepts
-- **<concept>** — <one-line definition> · `[t=MM:SS]`
+- **<concept>**: <one-line definition> · `[t=MM:SS]`
 
 ## Notes
 
