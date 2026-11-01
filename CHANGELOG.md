@@ -6,10 +6,15 @@ All notable changes to this skill (originally `claude-watch`, renamed `watch` in
 
 ### Fixed
 - **The local whisper.cpp route works now.** `whisper-cli` can't read the m4a `watch.py` extracts, and it exits 0 anyway, so every local run ended in `transcript_source: none`. The audio now goes through WAV first. Dropping `-nt` also brings back real segment timestamps instead of 30-second windows.
+- **Scene frames land after the transition.** They were grabbed on the cut, so soft transitions came out as blurs.
 - **A video with no audio stream** continues frames-only instead of crashing.
 - **An empty cached transcript** gets retried instead of sticking.
 
 ### Added
+- **Long videos get written in sections.** Over 30 minutes, `watch.py` cuts at pauses and scene changes, each part is written from only its own frames and transcript, and `merge_notes.py` checks them against the source and merges them. `--start`/`--end` are no longer needed for good long notes.
+- **A frame budget that scales.** The flat 80-frame default is gone. The budget follows length and scene changes, the token cost prints before anything is read, and `--max-frames` still overrides it.
+- **`--cookies-from-browser`.** Opt-in, one run at a time, for videos your own account can watch. Cookies are never stored, printed or uploaded. DRM and paywalls your account doesn't cover stop with a plain message and exit code 6.
+- **A CI test that the plugin really loads.** It installs the plugin into Claude Code, starts a session against a fake API, checks the skill registered and the startup hook ran, then puts each past defect back to prove they'd get caught.
 - **No Whisper API upload limit.** Audio over 24 MB goes up as overlapping chunks and merges back onto one timeline. Rate limits and server errors get retried.
 - **Login-wall help.** Instagram and other logged-in sites now get clear setup steps for yt-dlp's browser-cookie config and exit code 5, not a traceback. See the README.
 - **CI.** `pytest` on Linux and macOS, plus a fresh end-to-end run on a real public-domain video through captions and whisper.cpp (`tests/e2e/fresh_watch.sh`).

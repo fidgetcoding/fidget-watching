@@ -14,7 +14,7 @@ More: [ESSENCE.md](ESSENCE.md) · [EVOLUTION.md](EVOLUTION.md)
 
 ## Why I forked it
 
-I installed claude-watch and it asked for an API key. My exact reaction: "i thought i have audio downloaders setup so i dont need these stupid keys. dont i already have ffmpeg and whisper?" I did, so now it uses them. Then: "can i do it to a whole youtube cahnnel?" Now it can do that too. Everything else here is devinilabs' work, and it's a great idea.
+I installed claude-watch and it asked for an API key. My exact reaction: "i thought i have audio downloaders setup so i dont need these stupid keys. dont i already have ffmpeg and whisper?" I did, so now it uses them. Then: "can i do it to a whole youtube cahnnel?" Now it can do that too. The idea is devinilabs', and it's a great one: scene-aware frames, a library you can come back to, and a notes file instead of answers lost in chat. Everything I changed is in the [changelog](CHANGELOG.md).
 
 ## Install
 
@@ -35,11 +35,8 @@ I installed claude-watch and it asked for an API key. My exact reaction: "i thou
    - `## Notes` — one section per scene with embedded screenshot, on-screen text, what was said, Claude's synthesis
    - `## Code & Commands` — every code-on-screen frame transcribed into a runnable fenced block
    - `## Diagrams Referenced`, `## Open Questions`
-5. Saves everything to `~/watch/library/<slug>/` — re-running the same URL is a cache hit.
-
-## Why upstream built it
-
-`claude-video`'s uniform frame sampling spends the budget poorly on long lectures with slow-changing slides. And answers live in chat, so you can't go back to "the notes from that video." `watch` is opinionated for the tutorial workflow: scene-aware frames, persistent library, structured notes file.
+5. Over 30 minutes, it does that part by part and merges the result, so the end of a long video gets the same attention as the start.
+6. Saves everything to `~/watch/library/<slug>/` — re-running the same URL is a cache hit.
 
 ## Usage
 
@@ -74,7 +71,7 @@ The SKILL.md description ships an explicit trigger list so Claude Code's auto-ro
 
 ## Bring your own keys
 
-Captions cover the majority of public videos for free. Whisper only kicks in when a video has no caption track.
+You don't need any. Captions cover most public videos for free, and with whisper.cpp installed, videos without captions are free too.
 
 | Need | Cost |
 |---|---|
@@ -96,7 +93,7 @@ To force a fresh run, delete the `meta.json` in the library dir.
 
 - **Long videos get written in sections.** Over 30 minutes, `/watch` splits the video into parts of about 20 minutes, cutting at pauses and scene changes. Claude writes each part from only its own frames and transcript, then a check and a merge build one `notes.md`. No `--start`/`--end` needed, though they still work. The check catches timestamps outside their part, links to frames that don't exist, long stretches with no notes, and quotes that aren't in the transcript. It can't catch everything: Claude still writes the notes, and it can still misread a slide.
 - **Frames cost tokens, and the budget scales instead of hiding that.** The default used to be a flat 80. Now it's up to 6 frames a minute for the first 15 minutes, 2.5 a minute to the hour and 1.5 a minute after that, and a slow video only uses what its scene changes and the 45-second coverage floor need. Before it reads anything, `/watch` prints the frame count and estimated tokens. `--max-frames` overrides the budget. Every extra frame costs the same again, about 210 input tokens at 512 px.
-- **No transcript length limit.** The Whisper APIs cap uploads at 25 MB (about 50 minutes here), so longer audio goes up in overlapping chunks and comes back as one timeline. Local whisper.cpp has no upload to cap.
+- **No transcript length limit, so long videos don't need captions.** The Whisper APIs cap uploads at 25 MB (about 50 minutes here), so longer audio goes up in overlapping chunks and comes back as one timeline. Local whisper.cpp has no upload to cap.
 - **Private videos need your own login, and you have to ask for it.** Public URLs and local files work out of the box. For anything your account can already watch, add `--cookies-from-browser firefox`. See below.
 - **I don't get around paywalls or DRM.** A login gets you what your account already has, and nothing more. DRM-protected streaming stops with a plain message, and so does anything your account hasn't paid for.
 
@@ -140,4 +137,4 @@ Releasing: tag `vX.Y.Z`, push the tag — CI builds and attaches `watch.skill`.
 
 ## License
 
-MIT. Built on `yt-dlp`, `ffmpeg`, and Claude's multimodal `Read` tool. Whisper transcription via [Groq](https://groq.com) or [OpenAI](https://openai.com).
+MIT. The `LICENSE` file is devinilabs' notice, unchanged, as MIT requires. Built on `yt-dlp`, `ffmpeg`, and Claude's multimodal `Read` tool. Whisper transcription via [Groq](https://groq.com) or [OpenAI](https://openai.com).
