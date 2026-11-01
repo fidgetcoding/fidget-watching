@@ -141,6 +141,7 @@ If the user re-watches the same URL, the script reuses the cached download, tran
 ## Failure modes
 
 - **Setup preflight non-zero** → run `setup.py`, then ask for a key via `AskUserQuestion`.
+- **`watch.py` exits 5** → the video sits behind a login (usually Instagram). The script's stderr holds the exact fix: one `--cookies-from-browser` line in yt-dlp's config. Relay those steps and ask which browser they use. Don't retry with other flags, don't edit their config without asking, and never read their cookies yourself.
 - **No transcript** → script emits `transcript_source: none`. Generate notes frames-only and tell the user.
 - **Long video sparse-scan warning** → offer to re-run with `--start`/`--end` focused on the part the user cares about.
 - **Whisper failure** → retry with `--whisper openai` (if Groq failed) or vice versa. Audio over the 25 MB upload limit is split automatically, so size alone isn't a reason to give up on an API route.

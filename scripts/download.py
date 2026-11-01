@@ -5,6 +5,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from scripts import access
+
 
 def download_video(url: str, out_dir: Path, *, basename: str = "video") -> Path:
     """Download to `out_dir/<basename>.<ext>` via yt-dlp. Returns the downloaded file."""
@@ -19,6 +21,8 @@ def download_video(url: str, out_dir: Path, *, basename: str = "video") -> Path:
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
+        if access.is_login_wall(proc.stderr):
+            raise access.LoginRequired(access.login_help(url, proc.stderr))
         raise RuntimeError(f"yt-dlp failed: {proc.stderr.strip()}")
     matches = sorted(out_dir.glob(f"{basename}.*"))
     if not matches:

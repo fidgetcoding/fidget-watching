@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from scripts import access
+
 
 _SLUG_BAD = re.compile(r"[^a-z0-9]+")
 
@@ -33,6 +35,8 @@ def probe(url: str) -> dict:
         capture_output=True, text=True, check=False,
     )
     if proc.returncode != 0:
+        if access.is_login_wall(proc.stderr):
+            raise access.LoginRequired(access.login_help(url, proc.stderr))
         raise RuntimeError(f"yt-dlp channel probe failed: {proc.stderr.strip()[:300]}")
     return json.loads(proc.stdout)
 

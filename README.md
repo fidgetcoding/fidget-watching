@@ -87,7 +87,29 @@ To force a fresh run, delete the `meta.json` in the library dir.
 - **Long videos work, and frames are what they cost.** Scene frames plus one every 45 seconds add up, so past about 30 minutes a single notes pass gets expensive. Use `--start`/`--end` to focus, or raise `--max-gap`.
 - **Hard frame cap: 80** by default. Bump with `--max-frames` (token cost grows linearly).
 - **No transcript length limit.** The Whisper APIs cap uploads at 25 MB (about 50 minutes here), so longer audio goes up in overlapping chunks and comes back as one timeline. Local whisper.cpp has no upload to cap.
-- **No private platforms.** Public URLs and local files only.
+- **Login walls need one line of setup.** Public URLs and local files work out of the box. Instagram and other logged-in sites need the cookie config below.
+
+## Instagram and other login walls
+
+Some public Instagram posts download without a login, but many don't, and private posts never do. When a site blocks yt-dlp, `/watch` stops and prints these same steps, with the exact path for your machine.
+
+1. Log in to Instagram in a browser and check the video plays there.
+2. Add one line to yt-dlp's config file, creating the file if it isn't there. The path is `~/.config/yt-dlp/config` on macOS and Linux, and `%APPDATA%\yt-dlp\config` on Windows.
+
+   ```
+   --cookies-from-browser firefox
+   ```
+
+   Swap `firefox` for `chrome`, `safari`, `edge`, `brave`, `chromium`, `opera` or `vivaldi`.
+3. Check it with `yt-dlp --simulate "<url>"`, then run `/watch` again.
+
+Good to know:
+
+- This applies to every yt-dlp run on your machine, not just `/watch`. To undo it, delete the line.
+- The cookies stay on your machine and only go to the site they belong to. `/watch` never reads or stores them, yt-dlp does.
+- On macOS, Chrome asks for Keychain access the first time, and Safari needs Full Disk Access for your terminal. Firefox needs neither.
+- Sites can rate-limit or flag accounts that download a lot, so go easy on an account you care about.
+- If yt-dlp can't read your browser, export a `cookies.txt` and use `--cookies /path/to/cookies.txt` in the config instead.
 
 ## Develop
 

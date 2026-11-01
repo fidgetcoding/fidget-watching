@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from scripts import access
+
 
 def is_url(source: str) -> bool:
     return source.startswith("http://") or source.startswith("https://")
@@ -27,6 +29,8 @@ def resolve_source(source: str, focus_range: Optional[tuple[float, float]]) -> d
             capture_output=True, text=True, check=False,
         )
         if proc.returncode != 0:
+            if access.is_login_wall(proc.stderr):
+                raise access.LoginRequired(access.login_help(source, proc.stderr))
             raise RuntimeError(f"yt-dlp probe failed: {proc.stderr.strip()}")
         info = json.loads(proc.stdout)
         return {

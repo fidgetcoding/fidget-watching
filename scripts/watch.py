@@ -21,6 +21,7 @@ _ROOT = Path(__file__).parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from scripts import access
 from scripts import library as lib
 from scripts import resolve as resolve_mod
 from scripts import download as download_mod
@@ -260,6 +261,7 @@ def _run_channel(source: str, args, probe: dict) -> int:
     print()
 
     results: list[dict] = []
+    login_help = ""
     for i, v in enumerate(videos, 1):
         print(f"--- [{i}/{len(videos)}] {v['title']} ({v['url']}) ---", flush=True)
         try:
@@ -268,6 +270,16 @@ def _run_channel(source: str, args, probe: dict) -> int:
             results.append(r)
             _print_video_manifest(r, args)
             print(flush=True)
+        except access.LoginRequired as e:
+            # The same fix applies to every video here, so print it once at the end.
+            login_help = str(e)
+            results.append({
+                "status": "error",
+                "title": v["title"],
+                "url": v["url"],
+                "error": "login required",
+            })
+            print("FAILED: login required", file=sys.stderr, flush=True)
         except Exception as e:
             results.append({
                 "status": "error",
@@ -292,6 +304,8 @@ def _run_channel(source: str, args, probe: dict) -> int:
     for r in results:
         if r.get("status") == "ok":
             print(f"  - {r['title']} -> {r['library_dir']}")
+    if login_help:
+        print(f"\n{login_help}", file=sys.stderr)
     return 0
 
 
@@ -317,19 +331,25 @@ def main(argv: list[str] | None = None) -> int:
         lib.LIBRARY_ROOT = Path(args.out_dir).expanduser().resolve()
     lib.LIBRARY_ROOT.mkdir(parents=True, exist_ok=True)
 
-    # Channel/playlist dispatch — only for URLs, only when not forced single.
-    if not args.single and resolve_mod.is_url(args.source):
-        try:
-            probe = channel_mod.probe(args.source)
-            if channel_mod.is_channel_or_playlist(probe):
-                return _run_channel(args.source, args, probe)
-        except Exception as e:
-            # Probe failed — fall through to single-video path.
-            print(f"channel probe failed, treating as single video: {e}",
-                  file=sys.stderr)
+    try:
+        # Channel/playlist dispatch: only for URLs, only when not forced single.
+        if not args.single and resolve_mod.is_url(args.source):
+            try:
+                probe = channel_mod.probe(args.source)
+                if channel_mod.is_channel_or_playlist(probe):
+                    return _run_channel(args.source, args, probe)
+            except access.LoginRequired:
+                raise
+            except Exception as e:
+                # Probe failed, so fall through to the single-video path.
+                print(f"channel probe failed, treating as single video: {e}",
+                      file=sys.stderr)
 
-    # Single-video path.
-    result = _run_one_video(args.source, args)
+        # Single-video path.
+        result = _run_one_video(args.source, args)
+    except access.LoginRequired as e:
+        print(e, file=sys.stderr)
+        return access.EXIT_LOGIN_REQUIRED
     _print_video_manifest(result, args)
     return 0
 
