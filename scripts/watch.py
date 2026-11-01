@@ -22,6 +22,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from scripts import access
+from scripts import budget as budget_mod
 from scripts import library as lib
 from scripts import resolve as resolve_mod
 from scripts import download as download_mod
@@ -62,6 +63,12 @@ def _run_one_video(source: str, args) -> dict:
     work = lib.LIBRARY_ROOT / slug
     work.mkdir(parents=True, exist_ok=True)
 
+    if meta["duration_s"] > 0:
+        window_s = meta["duration_s"] if not focus else min(focus[1], meta["duration_s"]) - focus[0]
+        print(budget_mod.early_estimate(window_s, width_px=args.resolution, override=args.max_frames),
+              flush=True)
+        print(flush=True)
+
     # Cache check — skip download/transcribe/scenes if same source_hash
     cached = lib.cache_lookup(slug, meta["source_hash"])
 
@@ -74,6 +81,9 @@ def _run_one_video(source: str, args) -> dict:
             video = download_mod.download_video(meta["source"], src_dir, basename="video")
         else:
             video = download_mod.copy_local(Path(meta["source"]), src_dir, basename="video")
+    # Direct links often report no duration, and everything below depends on it.
+    if meta["duration_s"] <= 0:
+        meta["duration_s"] = resolve_mod.probe_duration(video)
 
     # ---- Stage 3: transcribe ----
     transcript_path = work / "transcript.json"
@@ -144,14 +154,40 @@ def _run_one_video(source: str, args) -> dict:
             raw_scenes.insert(0, scenes_mod.Scene(t=s0, score=1.0, kind="detected"))
         max_gap = min(args.max_gap, 15.0)  # focus mode: denser coverage
         duration_for_floor = s1
+        window_s = s1 - s0
     else:
         max_gap = args.max_gap
         duration_for_floor = meta["duration_s"]
+        window_s = meta["duration_s"]
 
     floored = scenes_mod.apply_coverage_floor(
         raw_scenes, duration_s=duration_for_floor, max_gap_s=max_gap
     )
-    capped = scenes_mod.apply_budget_cap(floored, max_frames=args.max_frames)
+    max_frames = args.max_frames if args.max_frames is not None else budget_mod.auto_max_frames(window_s)
+    capped = scenes_mod.apply_budget_cap(floored, max_frames=max_frames)
+
+    transcript_window_path = work / "transcript.window.json"
+    if focus:
+        transcript_window_path.write_text(
+            json.dumps(transcript_for_window, indent=2, ensure_ascii=False)
+        )
+        transcript_consumer_path = "transcript.window.json"
+    else:
+        transcript_consumer_path = "transcript.json"
+
+    # Say what this run costs before spending any of it.
+    cost = budget_mod.final_cost(
+        planned=floored,
+        kept=capped,
+        limit=max_frames,
+        override=args.max_frames is not None,
+        width_px=args.resolution,
+        aspect=frames_mod.video_aspect(video),
+        transcript_path=work / transcript_consumer_path,
+    )
+    budget_mod.write_cost(work / "cost.json", cost)
+    print(budget_mod.format_cost(cost), flush=True)
+    print(flush=True)
 
     if not focus:
         scenes_path.write_text(json.dumps(
@@ -173,15 +209,6 @@ def _run_one_video(source: str, args) -> dict:
     ]
 
     # ---- Stage 7: emit manifest + meta ----
-    transcript_window_path = work / "transcript.window.json"
-    if focus:
-        transcript_window_path.write_text(
-            json.dumps(transcript_for_window, indent=2, ensure_ascii=False)
-        )
-        transcript_consumer_path = "transcript.window.json"
-    else:
-        transcript_consumer_path = "transcript.json"
-
     (work / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
     lib.write_manifest(
         path=work / "manifest.json",
@@ -314,7 +341,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("source", help="URL (single video, channel, or playlist) or local path")
     p.add_argument("--start", help="focus start (SS, MM:SS, or HH:MM:SS)")
     p.add_argument("--end", help="focus end (SS, MM:SS, or HH:MM:SS)")
-    p.add_argument("--max-frames", type=int, default=80)
+    p.add_argument("--max-frames", type=int, default=None,
+                   help="override the frame budget (default: scales with length and scene changes)")
     p.add_argument("--resolution", type=int, default=512, help="frame width in px")
     p.add_argument("--scene-threshold", type=float, default=0.30)
     p.add_argument("--max-gap", type=float, default=45.0, help="coverage floor seconds")

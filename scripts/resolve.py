@@ -18,6 +18,19 @@ def hash_source(source: str) -> str:
     return hashlib.sha1(source.encode("utf-8")).hexdigest()
 
 
+def probe_duration(path: Path) -> float:
+    """Length of a media file in seconds, or 0.0 if ffprobe can't tell."""
+    proc = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=nw=1:nk=1", str(path)],
+        capture_output=True, text=True, check=False,
+    )
+    try:
+        return float(proc.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
 def resolve_source(source: str, focus_range: Optional[tuple[float, float]]) -> dict:
     """Probe the source. Returns:
         {title, duration_s, source, is_url, source_hash, focus_range_str}

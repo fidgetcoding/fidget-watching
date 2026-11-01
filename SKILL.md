@@ -61,13 +61,15 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/watch.py" "<source>"
 
 Optional flags:
 - `--start T` / `--end T` — focus on a section (`SS`, `MM:SS`, or `HH:MM:SS`)
-- `--max-frames N` — lower budget (default 80)
+- `--max-frames N` — set the frame budget yourself. By default it scales with length and scene changes: up to 6 frames a minute for the first 15 minutes, 2.5 a minute to the hour, 1.5 a minute after that, and never below one frame every 45 seconds
 - `--resolution W` — bump frame width to 1024 px when on-screen text is tiny
 - `--scene-threshold X` — sensitivity (default 0.30; raise for fewer cuts, lower for more)
 - `--max-gap S` — coverage floor in seconds (default 45)
 - `--whisper local|groq|openai` — force backend
 - `--no-whisper` — disable Whisper entirely
 - `--out-dir DIR` — override library root
+
+**Tell the user the cost before you read anything.** The script prints `=== cost estimate ===` before it downloads and `=== cost ===` before it extracts frames. Pass on the frame count and token estimate in one line. If it's over 150k tokens, ask with `AskUserQuestion` whether to go ahead, focus with `--start`/`--end`, or set a lower `--max-frames`.
 
 **Step 3 — read every frame.** The script ends with a structured `=== frames ===` block listing each frame's path and timestamp. `Read` them all in parallel — they render as images in your context.
 
@@ -148,7 +150,7 @@ If the user re-watches the same URL, the script reuses the cached download, tran
 
 ## Token budget
 
-Frames dominate cost (~50-80k input tokens for 60 frames at 512 px). Transcripts are cheap. `--resolution 1024` quadruples per-frame cost — only when the user must read tiny on-screen text.
+Frames dominate cost, and it grows with every frame: about 210 input tokens per frame at 512 px on a 16:9 video, from Anthropic's published cost of one token per 28x28 patch. `=== cost ===` gives the number for this run, and `cost.json` in the library dir keeps it. A long transcript adds real cost too. `--resolution 1024` quadruples per-frame cost — only when the user must read tiny on-screen text.
 
 If the user asks a follow-up about a video you already watched in this session, do NOT re-run the script. The library directory is on disk; re-`Read` only the frames you need.
 

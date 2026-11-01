@@ -12,6 +12,20 @@ from scripts.scenes import Scene
 SETTLE_S = 1.5
 
 
+def video_aspect(video: Path, default: float = 9 / 16) -> float:
+    """height / width of the first video stream, for estimating frame cost."""
+    proc = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(video)],
+        capture_output=True, text=True, check=False,
+    )
+    try:
+        width, height = proc.stdout.strip().split("x")[:2]
+        return int(height) / int(width)
+    except (ValueError, ZeroDivisionError):
+        return default
+
+
 def format_filename(index: int, t: float) -> str:
     """`NNNN_tMM-SS.jpg`. MM may exceed 59 for videos > 1h — that's intentional
     so filenames sort naturally."""

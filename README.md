@@ -94,7 +94,7 @@ To force a fresh run, delete the `meta.json` in the library dir.
 ## Limits
 
 - **Long videos work, and frames are what they cost.** Scene frames plus one every 45 seconds add up, so past about 30 minutes a single notes pass gets expensive. Use `--start`/`--end` to focus, or raise `--max-gap`.
-- **Hard frame cap: 80** by default. Bump with `--max-frames` (token cost grows linearly).
+- **Frames cost tokens, and the budget scales instead of hiding that.** The default used to be a flat 80. Now it's up to 6 frames a minute for the first 15 minutes, 2.5 a minute to the hour and 1.5 a minute after that, and a slow video only uses what its scene changes and the 45-second coverage floor need. Before it reads anything, `/watch` prints the frame count and estimated tokens. `--max-frames` overrides the budget. Every extra frame costs the same again, about 210 input tokens at 512 px.
 - **No transcript length limit.** The Whisper APIs cap uploads at 25 MB (about 50 minutes here), so longer audio goes up in overlapping chunks and comes back as one timeline. Local whisper.cpp has no upload to cap.
 - **Login walls need one line of setup.** Public URLs and local files work out of the box. Instagram and other logged-in sites need the cookie config below.
 
