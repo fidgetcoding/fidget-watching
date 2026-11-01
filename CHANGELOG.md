@@ -2,7 +2,7 @@
 
 All notable changes to this skill (originally `claude-watch`, renamed `watch` in this fork) are documented here.
 
-## [Unreleased] — lorecraft-io fork
+## [Unreleased]: fidgetcoding fork
 
 ### Changed
 - **Renamed `claude-watch` → `watch`.** Slash command is now `/watch`. Skill installs at `~/.claude/skills/watch/`. Library lives at `~/watch/library/<slug>/`. Config at `~/.config/watch/.env`. The repo itself stays `claude-watch` on GitHub to preserve the fork lineage with `devinilabs/claude-watch`.

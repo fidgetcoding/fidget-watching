@@ -1,5 +1,7 @@
 # fidget-watching
 
+A fork of [devinilabs/claude-watch](https://github.com/devinilabs/claude-watch). devinilabs built the pipeline. I added the key-free whisper.cpp route, channel and playlist mode, and the fixes in the [changelog](CHANGELOG.md).
+
 **Turn any tutorial or lecture video into structured study notes.** Paste a URL, walk away, come back to a markdown file with embedded screenshots, timestamped transcript, and Claude's synthesis — saved to a persistent library.
 
 ```
@@ -10,9 +12,9 @@
 
 | Surface | Command |
 |---|---|
-| **Claude Code** | `/plugin marketplace add lorecraft-io/claude-watch` then `/plugin install watch@watch` |
+| **Claude Code** | `/plugin marketplace add fidgetcoding/fidget-watching` then `/plugin install watch@watch` |
 | **claude.ai** (web) | Download `watch.skill` from the latest release → Settings → Capabilities → Skills → `+` |
-| **Codex** | `git clone https://github.com/lorecraft-io/claude-watch ~/.codex/skills/watch` |
+| **Codex** | `git clone https://github.com/fidgetcoding/fidget-watching ~/.codex/skills/watch` |
 
 ## What it does
 
@@ -90,8 +92,8 @@ To force a fresh run, delete the `meta.json` in the library dir.
 ## Develop
 
 ```bash
-git clone https://github.com/lorecraft-io/claude-watch
-cd watch
+git clone https://github.com/fidgetcoding/fidget-watching
+cd fidget-watching
 python3 -m pytest                         # full suite
 bash scripts/build-skill.sh               # → dist/watch.skill (claude.ai bundle)
 ```

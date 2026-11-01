@@ -6,5 +6,5 @@
   "scripts_dir": "scripts",
   "argument_hint": "<video-url-or-path> [topic-or-question]",
   "license": "MIT",
-  "homepage": "https://github.com/lorecraft-io/claude-watch"
+  "homepage": "https://github.com/fidgetcoding/fidget-watching"
 }

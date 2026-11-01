@@ -1,9 +1,9 @@
 {
   "name": "watch",
-  "description": "Single-plugin marketplace for watch — turns videos, lectures, and reels into structured study notes with screenshots and a timestamped transcript.",
+  "description": "Single-plugin marketplace for watch — turns videos, lectures, and reels into structured study notes with screenshots and a timestamped transcript. Fork of devinilabs/claude-watch.",
   "owner": {
-    "name": "devinilabs",
-    "url": "https://github.com/devinilabs"
+    "name": "fidgetcoding",
+    "url": "https://github.com/fidgetcoding"
   },
   "plugins": [
     {
