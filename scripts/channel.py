@@ -31,13 +31,12 @@ def _short_hash(text: str, *, n: int = 4) -> str:
 def probe(url: str) -> dict:
     """Run yt-dlp's flat-playlist probe. Returns the parsed JSON or raises."""
     proc = subprocess.run(
-        ["yt-dlp", "--flat-playlist", "--dump-single-json", url],
+        ["yt-dlp", *access.ytdlp_auth_args(), "--flat-playlist", "--dump-single-json", url],
         capture_output=True, text=True, check=False,
     )
     if proc.returncode != 0:
-        if access.is_login_wall(proc.stderr):
-            raise access.LoginRequired(access.login_help(url, proc.stderr))
-        raise RuntimeError(f"yt-dlp channel probe failed: {proc.stderr.strip()[:300]}")
+        access.raise_for_failure(url, proc.stderr)
+        raise RuntimeError(f"yt-dlp channel probe failed: {access.scrub(proc.stderr).strip()[:300]}")
     return json.loads(proc.stdout)
 
 

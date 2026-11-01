@@ -14,6 +14,7 @@ def download_video(url: str, out_dir: Path, *, basename: str = "video") -> Path:
     template = str(out_dir / f"{basename}.%(ext)s")
     cmd = [
         "yt-dlp",
+        *access.ytdlp_auth_args(),
         "--no-playlist",
         "-f", "best[ext=mp4]/best",
         "-o", template,
@@ -21,9 +22,8 @@ def download_video(url: str, out_dir: Path, *, basename: str = "video") -> Path:
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
-        if access.is_login_wall(proc.stderr):
-            raise access.LoginRequired(access.login_help(url, proc.stderr))
-        raise RuntimeError(f"yt-dlp failed: {proc.stderr.strip()}")
+        access.raise_for_failure(url, proc.stderr)
+        raise RuntimeError(f"yt-dlp failed: {access.scrub(proc.stderr).strip()}")
     matches = sorted(out_dir.glob(f"{basename}.*"))
     if not matches:
         raise RuntimeError(f"yt-dlp returned 0 but no {basename}.* file in {out_dir}")

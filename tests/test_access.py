@@ -1,9 +1,13 @@
-"""Login-wall errors. A fake yt-dlp stands in for the real one, so no site gets contacted
-and no browser cookies get read."""
+"""Login walls, the opt-in browser login, DRM and paywalls. Most tests use a fake yt-dlp.
+The one that runs the real yt-dlp talks to a local server and reads a throwaway Firefox
+profile holding a made-up cookie. No real site, browser or cookie is involved."""
+import http.server
 import json
 import os
+import sqlite3
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -89,7 +93,7 @@ def test_help_changes_when_cookies_are_already_configured(monkeypatch, tmp_path)
     assert "Add this one line" not in text
     # A commented-out line doesn't count as configured.
     config.write_text("# --cookies-from-browser chrome\n")
-    assert "Add this one line" in login_help(IG_URL, IG_EMPTY_MEDIA)
+    assert "Run the same command again with this added" in login_help(IG_URL, IG_EMPTY_MEDIA)
 
 
 @patch("scripts.resolve.subprocess.run")
@@ -179,3 +183,197 @@ def test_channel_run_prints_the_steps_once_and_still_writes_the_index(tmp_path):
     assert proc.stderr.count("wants a login") == 1
     assert "videos_failed: 2" in proc.stdout
     assert list((tmp_path / "lib").glob("*/index.md"))
+
+
+# ---- Opt-in browser login, DRM and paywalls ----
+
+SECRET = "s3cr3t-cookie-value-do-not-print"
+
+LOGGING_YTDLP = """#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$YTDLP_LOG"
+{body}
+"""
+
+
+def _logging_env(tmp_path, body):
+    log = tmp_path / "calls.log"
+    env, home = _fake_ytdlp_env(tmp_path, LOGGING_YTDLP.format(body=body))
+    env["YTDLP_LOG"] = str(log)
+    return env, home, log
+
+
+def _watch_url(env, tmp_path, *extra):
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "watch.py"), "https://example.com/v",
+         "--single", "--no-whisper", "--out-dir", str(tmp_path / "lib"), *extra],
+        capture_output=True, text=True, check=False, cwd=str(ROOT), env=env,
+    )
+
+
+def test_browser_cookies_are_off_unless_asked_for(tmp_path):
+    env, _, log = _logging_env(tmp_path, 'echo "ERROR: nope" >&2; exit 1')
+    _watch_url(env, tmp_path)
+    assert "cookies" not in log.read_text()
+
+
+def test_the_flag_reaches_every_ytdlp_call(tmp_path):
+    video = tmp_path / "v.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-nostdin", "-f", "lavfi",
+         "-i", "color=white:size=64x36:duration=2:rate=5", "-pix_fmt", "yuv420p", str(video)],
+        check=True,
+    )
+    body = f"""
+case "$*" in
+  *--dump-single-json*|*" -j "*) echo '{{"title":"t","duration":2,"id":"x"}}' ;;
+  *--skip-download*) : ;;
+  *) out="$(printf '%s' "$*" | sed -E 's/.* -o ([^ ]+) .*/\\1/')"; cp "{video}" "${{out%.%(ext)s}}.mp4" ;;
+esac
+"""
+    env, _, log = _logging_env(tmp_path, body)
+    proc = _watch_url(env, tmp_path, "--cookies-from-browser", "firefox")
+    assert proc.returncode == 0, proc.stderr
+    calls = log.read_text().splitlines()
+    assert len(calls) >= 3  # metadata, captions, download
+    assert all("--cookies-from-browser firefox" in c for c in calls)
+
+
+@pytest.mark.parametrize("bad", ["netscape", "firefox;rm -rf /", "--cookies=/tmp/x", ""])
+def test_an_unknown_browser_is_refused_before_anything_runs(tmp_path, bad):
+    env, _, log = _logging_env(tmp_path, "exit 0")
+    proc = _watch_url(env, tmp_path, f"--cookies-from-browser={bad}")
+    assert proc.returncode == 2
+    assert not log.exists()
+
+
+def test_verbose_output_with_a_cookie_never_gets_repeated(tmp_path):
+    """Someone's yt-dlp config might have --verbose, and then headers land on stderr."""
+    env, _, _ = _logging_env(
+        tmp_path,
+        f'echo "[debug] Request Headers: Cookie: session={SECRET}" >&2\n'
+        f'echo "ERROR: [generic] Unable to download: HTTP Error 500" >&2\nexit 1',
+    )
+    proc = _watch_url(env, tmp_path, "--cookies-from-browser", "firefox")
+    assert proc.returncode != 0
+    assert SECRET not in proc.stdout + proc.stderr
+
+
+def test_drm_stops_with_a_plain_answer_even_with_a_login(tmp_path):
+    env, _, log = _logging_env(tmp_path, 'echo "ERROR: [x] abc: This video is DRM protected" >&2; exit 1')
+    proc = _watch_url(env, tmp_path, "--cookies-from-browser", "firefox")
+    assert proc.returncode == access.EXIT_BLOCKED
+    assert "I don't try to get around DRM" in proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert len(log.read_text().splitlines()) == 1  # no second try
+
+
+def test_a_paywall_without_a_login_suggests_the_users_own_login(tmp_path):
+    env, _, _ = _logging_env(tmp_path, 'echo "ERROR: [x] abc: Join this channel to get access to members-only content" >&2; exit 1')
+    proc = _watch_url(env, tmp_path)
+    assert proc.returncode == access.EXIT_LOGIN_REQUIRED
+    assert "--cookies-from-browser" in proc.stderr
+    assert "can't get past a paywall" in proc.stderr
+
+
+def test_a_paywall_the_login_does_not_cover_stops(tmp_path):
+    env, _, _ = _logging_env(tmp_path, 'echo "ERROR: [x] abc: Join this channel to get access to members-only content" >&2; exit 1')
+    proc = _watch_url(env, tmp_path, "--cookies-from-browser", "firefox")
+    assert proc.returncode == access.EXIT_BLOCKED
+    assert "I don't try to get around paywalls" in proc.stderr
+
+
+@pytest.fixture
+def members_only_site(tmp_path):
+    """A local server that only hands over a video to the right session cookie."""
+    video = tmp_path / "served.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-nostdin", "-f", "lavfi",
+         "-i", "color=white:size=64x36:duration=3:rate=5", "-pix_fmt", "yuv420p", str(video)],
+        check=True,
+    )
+    data = video.read_bytes()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def _respond(self, body):
+            if f"session={SECRET}" not in self.headers.get("Cookie", ""):
+                self.send_error(401)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            if body:
+                self.wfile.write(data)
+
+        def do_GET(self):
+            self._respond(True)
+
+        def do_HEAD(self):
+            self._respond(False)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}/private.mp4"
+    server.shutdown()
+
+
+@pytest.fixture
+def throwaway_firefox_profile(tmp_path):
+    """A made-up Firefox profile holding one made-up cookie. No real browser is touched."""
+    profile = tmp_path / "firefox-profile"
+    profile.mkdir()
+    db = sqlite3.connect(profile / "cookies.sqlite")
+    db.execute(
+        "CREATE TABLE moz_cookies (id INTEGER PRIMARY KEY, originAttributes TEXT DEFAULT '', "
+        "name TEXT, value TEXT, host TEXT, path TEXT, expiry INTEGER, lastAccessed INTEGER, "
+        "creationTime INTEGER, isSecure INTEGER, isHttpOnly INTEGER, inBrowserElement INTEGER "
+        "DEFAULT 0, sameSite INTEGER DEFAULT 0, rawSameSite INTEGER DEFAULT 0, schemeMap INTEGER DEFAULT 0)"
+    )
+    db.execute(
+        "INSERT INTO moz_cookies (name, value, host, path, expiry, lastAccessed, creationTime, "
+        "isSecure, isHttpOnly) VALUES ('session', ?, '127.0.0.1', '/', 4102444800, 0, 0, 0, 0)",
+        (SECRET,),
+    )
+    db.commit()
+    db.close()
+    return profile
+
+
+def _real_watch(url, tmp_path, *extra):
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    env = {k: v for k, v in os.environ.items() if k not in ("GROQ_API_KEY", "OPENAI_API_KEY")}
+    env["HOME"] = str(home)
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "watch.py"), url, "--single", "--no-whisper",
+         "--out-dir", str(tmp_path / "lib"), *extra],
+        capture_output=True, text=True, check=False, cwd=str(ROOT), env=env,
+    )
+
+
+@pytest.mark.integration
+def test_real_ytdlp_gets_a_private_video_with_the_users_login_and_only_then(
+    members_only_site, throwaway_firefox_profile, tmp_path
+):
+    refused = _real_watch(members_only_site, tmp_path)
+    assert refused.returncode == access.EXIT_LOGIN_REQUIRED, refused.stdout + refused.stderr
+    assert "--cookies-from-browser" in refused.stderr
+
+    allowed = _real_watch(
+        members_only_site, tmp_path, "--cookies-from-browser", f"firefox:{throwaway_firefox_profile}"
+    )
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+    lib = next((tmp_path / "lib").glob("*"))
+    assert list((lib / "frames").glob("*.jpg"))
+
+    # The cookie went to the site and nowhere else.
+    assert SECRET not in refused.stdout + refused.stderr + allowed.stdout + allowed.stderr
+    secret = SECRET.encode()
+    for root in (tmp_path / "lib", tmp_path / "home"):
+        for f in root.rglob("*"):
+            if f.is_file():
+                assert secret not in f.read_bytes(), f"cookie value ended up in {f}"
+    assert not [f for f in (tmp_path / "lib").rglob("*") if "cookie" in f.name.lower()]

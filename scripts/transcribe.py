@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from scripts import access
+
 from scripts import whisper
 
 _TS_RX = re.compile(
@@ -127,6 +129,7 @@ def fetch_native_captions(video_url: str, work_dir: Path) -> Optional[Path]:
     work_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "yt-dlp",
+        *access.ytdlp_auth_args(),
         "--skip-download",
         "--write-subs",
         "--write-auto-subs",

@@ -46,11 +46,12 @@ I installed claude-watch and it asked for an API key. My exact reaction: "i thou
 ```
 /watch <url-or-path> [topic]
 /watch ~/Lectures/cs231n.mp4 backpropagation derivation
+/watch https://youtu.be/<long>                     # over 30 minutes gets written in sections
 /watch https://youtu.be/<long> --start 5:00 --end 25:00
 /watch <url> --resolution 1024            # for slides with tiny code text
 ```
 
-Flags: `--start/--end`, `--max-frames`, `--resolution`, `--scene-threshold`, `--max-gap`, `--whisper local|groq|openai`, `--no-whisper`, `--out-dir`, `--limit N` (channel mode), `--single` (force per-video).
+Flags: `--start/--end`, `--max-frames`, `--resolution`, `--scene-threshold`, `--max-gap`, `--no-sections`, `--section-minutes`, `--whisper local|groq|openai`, `--no-whisper`, `--cookies-from-browser`, `--out-dir`, `--limit N` (channel mode), `--single` (force per-video).
 
 ### Natural-language activation
 
@@ -96,29 +97,35 @@ To force a fresh run, delete the `meta.json` in the library dir.
 - **Long videos get written in sections.** Over 30 minutes, `/watch` splits the video into parts of about 20 minutes, cutting at pauses and scene changes. Claude writes each part from only its own frames and transcript, then a check and a merge build one `notes.md`. No `--start`/`--end` needed, though they still work. The check catches timestamps outside their part, links to frames that don't exist, long stretches with no notes, and quotes that aren't in the transcript. It can't catch everything: Claude still writes the notes, and it can still misread a slide.
 - **Frames cost tokens, and the budget scales instead of hiding that.** The default used to be a flat 80. Now it's up to 6 frames a minute for the first 15 minutes, 2.5 a minute to the hour and 1.5 a minute after that, and a slow video only uses what its scene changes and the 45-second coverage floor need. Before it reads anything, `/watch` prints the frame count and estimated tokens. `--max-frames` overrides the budget. Every extra frame costs the same again, about 210 input tokens at 512 px.
 - **No transcript length limit.** The Whisper APIs cap uploads at 25 MB (about 50 minutes here), so longer audio goes up in overlapping chunks and comes back as one timeline. Local whisper.cpp has no upload to cap.
-- **Login walls need one line of setup.** Public URLs and local files work out of the box. Instagram and other logged-in sites need the cookie config below.
+- **Private videos need your own login, and you have to ask for it.** Public URLs and local files work out of the box. For anything your account can already watch, add `--cookies-from-browser firefox`. See below.
+- **I don't get around paywalls or DRM.** A login gets you what your account already has, and nothing more. DRM-protected streaming stops with a plain message, and so does anything your account hasn't paid for.
 
-## Instagram and other login walls
+## Private videos and login walls
 
-Some public Instagram posts download without a login, but many don't, and private posts never do. When a site blocks yt-dlp, `/watch` stops and prints these same steps, with the exact path for your machine.
+If you can watch a video in your browser, `/watch` can use that login for one run. That covers private posts, Instagram, members-only videos you're a member of, and internal video sites. It's opt-in, and it's off unless you add the flag:
 
-1. Log in to Instagram in a browser and check the video plays there.
-2. Add one line to yt-dlp's config file, creating the file if it isn't there. The path is `~/.config/yt-dlp/config` on macOS and Linux, and `%APPDATA%\yt-dlp\config` on Windows.
+```
+/watch <url> --cookies-from-browser firefox
+```
 
-   ```
-   --cookies-from-browser firefox
-   ```
+Swap `firefox` for `chrome`, `safari`, `edge`, `brave`, `chromium`, `opera`, `vivaldi` or `whale`. To pick a profile, use `firefox:<profile>`. When a site blocks yt-dlp, `/watch` stops and prints these steps, and Claude asks you before using your login.
 
-   Swap `firefox` for `chrome`, `safari`, `edge`, `brave`, `chromium`, `opera` or `vivaldi`.
-3. Check it with `yt-dlp --simulate "<url>"`, then run `/watch` again.
+What happens to your cookies:
+
+- yt-dlp reads them from your browser and sends them only to the site they belong to.
+- `/watch` passes along the browser's name and nothing else. It never stores, prints or uploads a cookie, and there's a test that checks a run leaves no trace of one in its output or its library folder.
+- The video itself does get saved to your library, and its audio goes to Groq or OpenAI if you use those routes for a transcript. Think about that for anything confidential, and use local whisper.cpp.
+
+What it won't do:
+
+- **Get around a paywall.** If your account hasn't paid for it, it stops and says so.
+- **Get around DRM.** Netflix-style protected streams stop with a plain message, login or not. I don't try to break that, and I won't add it.
 
 Good to know:
 
-- This applies to every yt-dlp run on your machine, not just `/watch`. To undo it, delete the line.
-- The cookies stay on your machine and only go to the site they belong to. `/watch` never reads or stores them, yt-dlp does.
 - On macOS, Chrome asks for Keychain access the first time, and Safari needs Full Disk Access for your terminal. Firefox needs neither.
 - Sites can rate-limit or flag accounts that download a lot, so go easy on an account you care about.
-- If yt-dlp can't read your browser, export a `cookies.txt` and use `--cookies /path/to/cookies.txt` in the config instead.
+- To use a login on every yt-dlp run, put `--cookies-from-browser firefox` in `~/.config/yt-dlp/config` (`%APPDATA%\yt-dlp\config` on Windows). That's outside `/watch`, so it's your call. To undo it, delete the line.
 
 ## Develop
 

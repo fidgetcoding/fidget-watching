@@ -38,13 +38,12 @@ def resolve_source(source: str, focus_range: Optional[tuple[float, float]]) -> d
     focus_str = "" if focus_range is None else f"{focus_range[0]}-{focus_range[1]}"
     if is_url(source):
         proc = subprocess.run(
-            ["yt-dlp", "-j", "--no-playlist", source],
+            ["yt-dlp", *access.ytdlp_auth_args(), "-j", "--no-playlist", source],
             capture_output=True, text=True, check=False,
         )
         if proc.returncode != 0:
-            if access.is_login_wall(proc.stderr):
-                raise access.LoginRequired(access.login_help(source, proc.stderr))
-            raise RuntimeError(f"yt-dlp probe failed: {proc.stderr.strip()}")
+            access.raise_for_failure(source, proc.stderr)
+            raise RuntimeError(f"yt-dlp probe failed: {access.scrub(proc.stderr).strip()}")
         info = json.loads(proc.stdout)
         return {
             "title": info.get("title") or info.get("id") or "untitled",

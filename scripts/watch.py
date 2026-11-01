@@ -325,6 +325,14 @@ def _run_channel(source: str, args, probe: dict) -> int:
             results.append(r)
             _print_video_manifest(r, args)
             print(flush=True)
+        except access.Blocked as e:
+            results.append({
+                "status": "error",
+                "title": v["title"],
+                "url": v["url"],
+                "error": "blocked: DRM or paywall",
+            })
+            print(f"FAILED: {e}", file=sys.stderr, flush=True)
         except access.LoginRequired as e:
             # The same fix applies to every video here, so print it once at the end.
             login_help = str(e)
@@ -381,11 +389,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--whisper", choices=["local", "groq", "openai"], help="force Whisper backend")
     p.add_argument("--no-whisper", action="store_true", help="disable Whisper fallback")
     p.add_argument("--out-dir", help="library root (default: ~/watch/library)")
+    p.add_argument("--cookies-from-browser", metavar="BROWSER", default=None,
+                   help="opt in to your own browser login for this run, for videos your account "
+                        f"can already watch ({', '.join(access.BROWSERS)})")
     p.add_argument("--limit", type=int, default=10,
                    help="max videos to process when source is a channel/playlist (default 10)")
     p.add_argument("--single", action="store_true",
                    help="force single-video mode even if URL looks like a channel/playlist")
     args = p.parse_args(argv)
+
+    try:
+        access.use_browser_cookies(args.cookies_from_browser)
+    except ValueError as e:
+        p.error(str(e))
 
     if args.out_dir:
         lib.LIBRARY_ROOT = Path(args.out_dir).expanduser().resolve()
@@ -398,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
                 probe = channel_mod.probe(args.source)
                 if channel_mod.is_channel_or_playlist(probe):
                     return _run_channel(args.source, args, probe)
-            except access.LoginRequired:
+            except (access.LoginRequired, access.Blocked):
                 raise
             except Exception as e:
                 # Probe failed, so fall through to the single-video path.
@@ -410,6 +426,9 @@ def main(argv: list[str] | None = None) -> int:
     except access.LoginRequired as e:
         print(e, file=sys.stderr)
         return access.EXIT_LOGIN_REQUIRED
+    except access.Blocked as e:
+        print(e, file=sys.stderr)
+        return access.EXIT_BLOCKED
     _print_video_manifest(result, args)
     return 0
 

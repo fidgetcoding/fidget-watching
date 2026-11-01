@@ -70,6 +70,7 @@ Optional flags:
 - `--whisper local|groq|openai` — force backend
 - `--no-whisper` — disable Whisper entirely
 - `--out-dir DIR` — override library root
+- `--cookies-from-browser BROWSER` — use the user's own browser login for this run. Only with their say-so, see Failure modes
 
 **Tell the user the cost before you read anything.** The script prints `=== cost estimate ===` before it downloads and `=== cost ===` before it extracts frames. Pass on the frame count and token estimate in one line. If it's over 150k tokens, ask with `AskUserQuestion` whether to go ahead, focus with `--start`/`--end`, or set a lower `--max-frames`.
 
@@ -184,7 +185,8 @@ If the user re-watches the same URL, the script reuses the cached download, tran
 ## Failure modes
 
 - **Setup preflight non-zero** → run `setup.py`, then ask for a key via `AskUserQuestion`.
-- **`watch.py` exits 5** → the video sits behind a login (usually Instagram). The script's stderr holds the exact fix: one `--cookies-from-browser` line in yt-dlp's config. Relay those steps and ask which browser they use. Don't retry with other flags, don't edit their config without asking, and never read their cookies yourself.
+- **`watch.py` exits 5** → the video sits behind a login. The script's stderr holds the steps. Relay them, and only if the user says their own account can watch it, ask which browser and re-run with `--cookies-from-browser <browser>`. Never add that flag on your own, never read, print or copy cookies yourself, and don't try other flags or other sites to get the same video.
+- **`watch.py` exits 6** → DRM, or a paywall the user's login doesn't cover. Tell them plainly and stop. Don't look for a way around it.
 - **No transcript** → script emits `transcript_source: none`. Generate notes frames-only and tell the user.
 - **Whisper failure** → retry with `--whisper openai` (if Groq failed) or vice versa. Audio over the 25 MB upload limit is split automatically, so size alone isn't a reason to give up on an API route.
 
@@ -201,3 +203,4 @@ If the user asks a follow-up about a video you already watched in this session, 
 - Reads/writes `~/.config/watch/.env` (mode 0600) for keys
 - Persists artifacts to `~/watch/library/<slug>/` — review the directory after first run if you're cautious
 - Does NOT log or transmit API keys, video files, or the original URL outside the audio-to-Whisper call
+- `--cookies-from-browser` is opt-in per run. yt-dlp reads the browser's cookies and sends them only to the video's site. This skill never stores, prints or uploads them, and never gets around a paywall or DRM
