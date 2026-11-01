@@ -149,14 +149,29 @@ def transcribe_local(audio: Path, *, model_path: Path) -> list[dict]:
     if not model.exists():
         raise WhisperError(f"whisper.cpp model not found: {model}")
     with tempfile.TemporaryDirectory() as td:
+        # whisper-cli reads WAV, not the m4a watch.py extracts: given an m4a it
+        # prints "failed to read audio" and still exits 0, leaving no JSON.
+        wav = Path(td) / "audio.wav"
+        conv = subprocess.run(
+            [
+                "ffmpeg", "-y", "-loglevel", "error", "-nostdin",
+                "-i", str(audio),
+                "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                str(wav),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        if conv.returncode != 0:
+            raise WhisperError(
+                f"ffmpeg could not convert {audio} to WAV: {conv.stderr[-500:]}"
+            )
         out_base = Path(td) / "out"
         cmd = [
             LOCAL_BIN,
             "-m", str(model),
             "-oj", "-of", str(out_base),
-            "-nt",          # no timestamps in stdout (we read JSON anyway)
             "-l", "en",
-            str(audio),
+            str(wav),
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if proc.returncode != 0:
@@ -165,7 +180,9 @@ def transcribe_local(audio: Path, *, model_path: Path) -> list[dict]:
             )
         json_path = out_base.with_suffix(".json")
         if not json_path.exists():
-            raise WhisperError(f"whisper-cli produced no JSON at {json_path}")
+            raise WhisperError(
+                f"whisper-cli produced no JSON: {proc.stderr[-500:]}"
+            )
         try:
             payload = json.loads(json_path.read_text())
         except json.JSONDecodeError as e:

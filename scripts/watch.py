@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,10 +76,12 @@ def _run_one_video(source: str, args) -> dict:
 
     # ---- Stage 3: transcribe ----
     transcript_path = work / "transcript.json"
+    # An empty cached transcript means the last run got nothing (no backend, or
+    # the backend failed), so it earns another try instead of sticking forever.
+    transcript: list[dict] = []
     if cached and transcript_path.exists():
         transcript = json.loads(transcript_path.read_text())
-    else:
-        transcript: list[dict] = []
+    if not transcript:
         if meta["is_url"]:
             vtt = transcribe_mod.fetch_native_captions(meta["source"], work / "subs")
             if vtt:
@@ -98,8 +101,8 @@ def _run_one_video(source: str, args) -> dict:
             )
             if backend:
                 audio = work / "audio.m4a"
-                transcribe_mod.extract_audio_for_whisper(video, audio)
                 try:
+                    transcribe_mod.extract_audio_for_whisper(video, audio)
                     transcript = transcribe_mod.transcribe_via_whisper(
                         audio,
                         backend=backend,
@@ -107,6 +110,9 @@ def _run_one_video(source: str, args) -> dict:
                         openai_key=env.get("OPENAI_API_KEY"),
                         local_model_path=local_model,
                     )
+                except subprocess.CalledProcessError:
+                    # A video with no audio stream has nothing to transcribe.
+                    print("No audio to transcribe, continuing frames-only.", file=sys.stderr)
                 except whisper.WhisperError as e:
                     print(f"Whisper failed ({backend}): {e}", file=sys.stderr)
         transcript = transcribe_mod.insert_speaker_breaks(transcript)
