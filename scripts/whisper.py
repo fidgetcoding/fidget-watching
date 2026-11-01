@@ -290,13 +290,12 @@ def merge_chunk_segments(
     return out
 
 
-def _transcribe_any_length(audio: Path, transcribe_one, *, max_bytes: Optional[int] = None) -> list[dict]:
+def _transcribe_any_length(audio: Path, transcribe_one) -> list[dict]:
     """Send audio to an API route, splitting it first when it's over the upload limit."""
-    limit = MAX_UPLOAD_BYTES if max_bytes is None else max_bytes
-    if audio.stat().st_size <= limit:
+    if audio.stat().st_size <= MAX_UPLOAD_BYTES:
         return transcribe_one(audio)
     with tempfile.TemporaryDirectory() as td:
-        chunks = split_audio(audio, Path(td), max_bytes=limit)
+        chunks = split_audio(audio, Path(td), max_bytes=MAX_UPLOAD_BYTES)
         print(
             f"Audio is {audio.stat().st_size / 1_000_000:.0f} MB, over the upload limit. "
             f"Sending it as {len(chunks)} chunks.",

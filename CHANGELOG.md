@@ -4,7 +4,18 @@ All notable changes to this skill (originally `claude-watch`, renamed `watch` in
 
 ## [Unreleased]: fidgetcoding fork
 
+### Fixed
+- **The local whisper.cpp route works now.** `whisper-cli` can't read the m4a `watch.py` extracts, and it exits 0 anyway, so every local run ended in `transcript_source: none`. The audio now goes through WAV first. Dropping `-nt` also brings back real segment timestamps instead of 30-second windows.
+- **A video with no audio stream** continues frames-only instead of crashing.
+- **An empty cached transcript** gets retried instead of sticking.
+
+### Added
+- **No Whisper API upload limit.** Audio over 24 MB goes up as overlapping chunks and merges back onto one timeline. Rate limits and server errors get retried.
+- **Login-wall help.** Instagram and other logged-in sites now get clear setup steps for yt-dlp's browser-cookie config and exit code 5, not a traceback. See the README.
+- **CI.** `pytest` on Linux and macOS, plus a fresh end-to-end run on a real public-domain video through captions and whisper.cpp (`tests/e2e/fresh_watch.sh`).
+
 ### Changed
+- **Every link points at `fidgetcoding/fidget-watching`,** and `marketplace.json` names this fork as owner while crediting `devinilabs/claude-watch`.
 - **Renamed `claude-watch` → `watch`.** Slash command is now `/watch`. Skill installs at `~/.claude/skills/watch/`. Library lives at `~/watch/library/<slug>/`. Config at `~/.config/watch/.env`. The repo itself stays `claude-watch` on GitHub to preserve the fork lineage with `devinilabs/claude-watch`.
 - **Hardened natural-language activation.** SKILL.md `description:` now ends with an explicit `Triggers on:` enumeration of phrases (mirrors the Higgsfield-skill pattern) so Claude Code's auto-router picks the skill on plain-English requests — `watch this video`, `study this lecture`, `transcribe this reel`, `summarize this with frames`, `break down this video`, `analyze this channel`, `frame by frame`, `scrape this creator`, `sweep this channel`, `hook analysis`, `script structure`, `cloneable moves`, etc. — not just the slash command. README ships a Natural-language activation section listing the trigger families.
 
