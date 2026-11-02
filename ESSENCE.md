@@ -12,6 +12,9 @@
 - **Whole channels and playlists.** Paste a channel or playlist URL and it does a batch (10 by default) and rolls them up in an `index.md`.
 - **Long audio just works.** The Whisper APIs cap uploads at 25 MB, so longer audio goes up in overlapping chunks and comes back as one timeline. Tested locally with generated audio and mocked APIs, so no paid call ran.
 - **Login walls explain themselves.** When Instagram or another site blocks yt-dlp, `/watch` stops and prints the exact setup steps.
+- **Long videos get sections.** Over 30 minutes, the video splits into parts of about 20 minutes, Claude writes each from its own frames and transcript, and a check and a merge build one `notes.md`.
+- **A frame budget that scales.** Upstream's flat 80 became up to 6 frames a minute for the first 15 minutes, 2.5 to the hour and 1.5 after that, with the count and estimated tokens printed before it reads anything.
+- **Private videos with your own login.** `--cookies-from-browser` gets you what your account can already watch. I haven't tested it on a real logged-in site.
 - **Shared Whisper model.** It finds a model you already downloaded for other tools.
 - **Plain-English triggers.** "Watch this lecture" or "transcribe this reel" activates it without the slash command.
 - **Renamed.** `/claude-watch` became `/watch`.
@@ -31,7 +34,7 @@ For key-free transcripts: `brew install whisper-cpp`, plus a model at `~/.config
 
 **What works today.** You can read all of this on the repo's Actions tab:
 
-- 121 tests pass in CI on Linux and macOS.
+- 184 tests run in CI on Linux and macOS, and CI checks that the plugin loads and its startup hook fires.
 - CI runs a fresh end-to-end on a public-domain NASA clip, 76 seconds, from a throwaway home folder with no API keys. By URL through captions: 8 frames, 24 transcript segments. By local path through whisper.cpp: 8 frames, 32 segments.
 - Both CI jobs also run every Monday, so a yt-dlp or vendor change shows up without a push.
 

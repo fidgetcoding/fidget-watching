@@ -33,6 +33,9 @@ Then: "can i do it to a whole youtube cahnnel?" and "lets fix the script so it c
 | 2026-11-01 | `4bcf8be` | Mine: long audio splits, so the API routes have no upload limit |
 | 2026-11-01 | `f1c91dd` | Mine: every link points here, and the README credits upstream at the top |
 | 2026-11-01 | `d4c5345` | Mine: login walls explain themselves |
+| 2026-11-01 | `102c14a`, `317a919` | Mine: the frame budget scales, long videos get sections |
+| 2026-11-01 | `571aa27` | Mine: browser login for videos your account can watch |
+| 2026-11-01 | `d04d059` | Mine: CI proves the plugin loads and its hook fires |
 
 ## Round by round
 
@@ -67,6 +70,10 @@ Built: long audio goes up in overlapping chunks cut with ffmpeg stream copy and 
 Tested: generated audio and mocked HTTP, so no paid API ran. One test pushes a real file over 25 MB and 30 minutes through the real limit, and another checks that a beep at a known time comes back at that time. A fake yt-dlp stands in for login walls, using error text captured from real anonymous runs.
 Also: `f1c91dd` points every link here, credits upstream at the top of the README, and names fidgetcoding as the marketplace owner, with `LICENSE` untouched.
 
+**Round 7: long videos and logins (11-01).**
+Built: `6b6c441` and `102c14a` replace the flat 80 frames with a budget that scales with length and prints its cost first. `317a919` writes videos over 30 minutes in parts of about 20 minutes, then checks and merges them. `571aa27` adds `--cookies-from-browser`. `d04d059` adds plugin load checks to CI.
+Tested: CI on Linux and macOS, fresh end-to-end included. The login path hasn't run on a real logged-in site, and the paid Whisper APIs still haven't been called.
+
 ## Test log
 
 | Date | Check | Result |
@@ -76,6 +83,7 @@ Also: `f1c91dd` points every link here, credits upstream at the top of the READM
 | 11-01 | pytest in CI at `0654d8d` | 121 passed, Linux and macOS |
 | 11-01 | CI end-to-end, by URL through captions | 8 frames, 24 segments, longest 6.0 s |
 | 11-01 | CI end-to-end, by path through whisper.cpp | 8 frames, 32 segments, longest 3.6 s |
+| 11-01 | pytest in CI at `4ac9b28` | 184 collected, green on Linux and macOS, with fresh end-to-end and plugin load |
 
 The API chunking has only been tested locally, against mocked APIs.
 
