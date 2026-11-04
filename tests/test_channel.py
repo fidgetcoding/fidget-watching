@@ -19,9 +19,9 @@ def test_is_channel_playlist_with_two_entries_true():
     assert channel_mod.is_channel_or_playlist(info) is True
 
 
-def test_is_channel_playlist_with_one_entry_false():
+def test_is_channel_playlist_with_one_entry_true():
     info = {"_type": "playlist", "entries": [{"id": "a", "title": "A"}]}
-    assert channel_mod.is_channel_or_playlist(info) is False
+    assert channel_mod.is_channel_or_playlist(info) is True
 
 
 def test_enumerate_videos_flat_playlist():

@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import re
+import math
 import subprocess
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,26 +31,22 @@ def detect_scenes(video: Path, threshold: float = 0.30) -> list[Scene]:
     section of the video is always represented even when ffmpeg's first reported cut
     is several seconds in.
 
-    On non-zero ffmpeg exit, emits a warning but still returns the t=0 anchor; this
-    lets the caller distinguish "video has no cuts" from "ffmpeg failed to run".
+    A failed scan is an error, so a partial/empty detection isn't cached as success.
     """
     cmd = [
         "ffmpeg",
         "-hide_banner",
         "-nostats",
+        "-nostdin",
         "-i", str(video),
+        "-an", "-sn", "-dn",
         "-vf", f"select='gt(scene,{threshold})',showinfo,metadata=print",
         "-f", "null",
         "-",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
-        warnings.warn(
-            f"ffmpeg exited {proc.returncode} for {video}; scene list may be empty. "
-            f"stderr tail: {proc.stderr[-200:]!r}",
-            RuntimeWarning,
-            stacklevel=2,
-        )
+        raise RuntimeError(f"ffmpeg scene scan failed (exit {proc.returncode}): {proc.stderr[-200:]}")
     out = [Scene(t=0.0, score=1.0, kind="detected")]
 
     # Try the older inline format first (single-line pts_time + scene:).
@@ -82,8 +78,12 @@ def apply_coverage_floor(
     Uses end-of-video as the right edge so a single boundary at t=5 in a 60s video
     with max_gap=45 yields one floor at t=50.
     """
+    if not math.isfinite(max_gap_s) or max_gap_s <= 0:
+        raise ValueError("max_gap_s must be finite and positive")
+    if not math.isfinite(duration_s) or duration_s < 0:
+        raise ValueError("duration_s must be finite and nonnegative")
     if not scenes:
-        return [Scene(t=0.0, score=0.0, kind="floor")]
+        scenes = [Scene(t=0.0, score=0.0, kind="floor")]
     sorted_scenes = sorted(scenes, key=lambda s: s.t)
     out: list[Scene] = []
     edges = [s.t for s in sorted_scenes] + [duration_s]

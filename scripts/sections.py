@@ -9,10 +9,12 @@ merge_notes.py puts the section notes back together.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 from pathlib import Path
 
 from scripts import budget as budget_mod
+from scripts.storage import write_json, write_text
 
 # Below this length a single notes pass holds up fine.
 TRIGGER_S = 30 * 60
@@ -85,6 +87,10 @@ def plan_cuts(
     for i in range(1, n):
         ideal = start_s + i * step
         cut = _best_cut(ideal, ideal - reach, ideal + reach, transcript, scenes)
+        # A very long caption can start before the window or a preceding cut.
+        # Preserve ordered, nonempty parts even when no sentence boundary fits.
+        if not ideal - reach <= cut <= ideal + reach:
+            cut = ideal
         cuts.append(cut)
     cuts.append(end_s)
     return cuts
@@ -103,7 +109,8 @@ def build_plan(
     for i, (a, b) in enumerate(zip(cuts, cuts[1:])):
         in_section = (lambda t, a=a, b=b, final=(i == last): a <= t < b or (final and t == b))
         section_frames = [f for f in frames if in_section(f["t"])]
-        cues = [c for c in transcript if in_section(c["t_start"])]
+        cues = [c for c in transcript if in_section(c["t_start"])
+                or (i == 0 and c["t_start"] < a < c["t_end"])]
         name = f"{i + 1:02d}"
         plan.append({
             "index": i + 1,
@@ -121,14 +128,20 @@ def build_plan(
     return plan
 
 
-def write_plan(work: Path, plan: list[dict]) -> None:
+def write_plan(work: Path, plan: list[dict], *, source_hash: str | None = None) -> None:
     """Write the section files. Notes already written survive a re-run of the same plan,
     so an interrupted long run picks up where it stopped. A changed plan clears them,
     because they'd describe frames that no longer exist."""
     sections_dir = work / "sections"
     sections_dir.mkdir(parents=True, exist_ok=True)
     public = [{k: v for k, v in s.items() if k != "cues"} for s in plan]
-    new_text = json.dumps({"version": 1, "sections": public}, indent=2, ensure_ascii=False)
+    # Token counts can be identical for entirely different text.
+    for section, private in zip(public, plan):
+        section["transcript_hash"] = hashlib.sha256(
+            json.dumps(private["cues"], sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+    new_text = json.dumps({"version": 1, "source_hash": source_hash, "sections": public},
+                          indent=2, ensure_ascii=False)
 
     plan_path = work / PLAN_FILE
     old_text = plan_path.read_text() if plan_path.exists() else None
@@ -137,11 +150,9 @@ def write_plan(work: Path, plan: list[dict]) -> None:
             stale.unlink()
         (work / "tldr.md").unlink(missing_ok=True)
 
-    plan_path.write_text(new_text)
     for s in plan:
-        (work / s["transcript_path"]).write_text(
-            json.dumps(s["cues"], indent=2, ensure_ascii=False)
-        )
+        write_json(work / s["transcript_path"], s["cues"])
+    write_text(plan_path, new_text)
 
 
 def clear_plan(work: Path) -> None:

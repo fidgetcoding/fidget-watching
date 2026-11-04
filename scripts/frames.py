@@ -58,6 +58,7 @@ def extract_frames(
     for i, scene in enumerate(scenes, start=1):
         name = format_filename(i, scene.t)
         out_path = out_dir / name
+        out_path.unlink(missing_ok=True)
         next_t = scenes[i].t if i < len(scenes) else None
         seek = _seek_time(scene, next_t)
         # `-ss` before `-i` is fast (key-frame seek) and accurate enough for our purposes.
@@ -79,7 +80,7 @@ def extract_frames(
             # Seeking past the end of the video writes nothing. Depending on the
             # ffmpeg version that's an error or a silent exit 0, so check for the file.
             first = subprocess.run(cmd, capture_output=True)
-            if (first.returncode != 0 or not out_path.exists()) and seek != scene.t:
+            if (first.returncode != 0 or not out_path.is_file() or out_path.stat().st_size == 0) and seek != scene.t:
                 cmd[cmd.index("-ss") + 1] = f"{scene.t:.3f}"
                 subprocess.run(cmd, check=True, capture_output=True)
             elif first.returncode != 0:
@@ -94,6 +95,8 @@ def extract_frames(
                 f"ffmpeg failed extracting frame {i} at t={scene.t:.3f}s "
                 f"(exit {e.returncode}): {stderr_text.strip()}"
             ) from e
+        if not out_path.is_file() or out_path.stat().st_size == 0:
+            raise RuntimeError(f"ffmpeg produced no frame {i} at t={scene.t:.3f}s")
         results.append({
             "index": i,
             "t": scene.t,

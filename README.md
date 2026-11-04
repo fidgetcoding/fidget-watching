@@ -48,6 +48,8 @@ I installed claude-watch and it asked for an API key. My exact reaction: "i thou
 /watch <url> --resolution 1024            # for slides with tiny code text
 ```
 
+Channel runs apply `--limit` during probing and write an index even when individual videos fail. Any failed item produces a nonzero exit status (5 when login is required, 1 for other batch failures).
+
 Flags: `--start/--end`, `--max-frames`, `--resolution`, `--scene-threshold`, `--max-gap`, `--no-sections`, `--section-minutes`, `--whisper local|groq|openai`, `--no-whisper`, `--cookies-from-browser`, `--out-dir`, `--limit N` (channel mode), `--single` (force per-video).
 
 ### Natural-language activation
@@ -85,9 +87,9 @@ Keys go in `~/.config/watch/.env` (mode 0600).
 
 ## Re-running the same video
 
-The library is keyed on `slug = YYYY-MM-DD-<title>-<short-hash>` where the short hash is `sha1(source + focus_range)[:4]`. Re-running the same URL with the same focus range hits the cache — no re-download, no re-transcribe, only frames + notes regenerate. Different focus range = different slug = a separate notes file.
+The library is keyed on `slug = YYYY-MM-DD-<title>-<short-hash>` where the short hash is `sha1(source + focus_range)[:4]`. Re-running the same source with the same focus range reuses its existing library entry, including on a later day. Downloads, valid transcripts, raw scene detections and matching nonempty frames are reused. Changing the scene threshold refreshes detection; changing the frame budget or resolution rebuilds the affected frames. Editing a local file invalidates derived caches using its size and modification time. A different focus range gets a separate entry.
 
-To force a fresh run, delete the `meta.json` in the library dir.
+To force a fresh run, delete the `meta.json` in the library dir. Missing or damaged caches are rebuilt. Each library entry allows one writer at a time; a competing run exits with a retry message. A failed frame extraction keeps the previous frames.
 
 ## Limits
 
@@ -129,7 +131,8 @@ Good to know:
 ```bash
 git clone https://github.com/fidgetcoding/fidget-watching
 cd fidget-watching
-python3 -m pytest                         # full suite
+python3 -m pip install pytest              # development dependency
+python3 -m pytest                         # full suite; uses temporary user settings
 bash scripts/build-skill.sh               # → dist/watch.skill (claude.ai bundle)
 ```
 

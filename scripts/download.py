@@ -2,10 +2,18 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 from scripts import access
+
+
+def media_files(out_dir: Path, basename: str = "video") -> list[Path]:
+    """Completed media only: never mistake a partial download or sidecar for video."""
+    extensions = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".flv", ".ts", ".mpeg", ".mpg", ".ogv"}
+    return sorted(p for p in out_dir.glob(f"{basename}.*")
+                  if p.suffix.lower() in extensions and p.is_file() and p.stat().st_size > 0)
 
 
 def download_video(url: str, out_dir: Path, *, basename: str = "video") -> Path:
@@ -24,7 +32,7 @@ def download_video(url: str, out_dir: Path, *, basename: str = "video") -> Path:
     if proc.returncode != 0:
         access.raise_for_failure(url, proc.stderr)
         raise RuntimeError(f"yt-dlp failed: {access.scrub(proc.stderr).strip()}")
-    matches = sorted(out_dir.glob(f"{basename}.*"))
+    matches = media_files(out_dir, basename)
     if not matches:
         raise RuntimeError(f"yt-dlp returned 0 but no {basename}.* file in {out_dir}")
     return matches[0]
@@ -41,5 +49,5 @@ def copy_local(src: Path, out_dir: Path, *, basename: str = "video") -> Path:
     try:
         os.symlink(src, dst)
     except OSError:
-        dst.write_bytes(src.read_bytes())
+        shutil.copyfile(src, dst)
     return dst

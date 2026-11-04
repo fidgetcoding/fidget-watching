@@ -8,6 +8,6 @@ STATUS=$(printf '%s' "$RAW" | python3 -c 'import json,sys; print(json.load(sys.s
 case "$STATUS" in
   ready|"") exit 0 ;;
   needs_install) echo "[watch] Run /watch — setup will install ffmpeg/yt-dlp on first run." ;;
-  needs_key) echo "[watch] Whisper key missing. Set GROQ_API_KEY or OPENAI_API_KEY in ~/.config/watch/.env (or use --no-whisper)." ;;
-  needs_install_and_key) echo "[watch] Setup incomplete: run /watch and Claude will walk you through install + API key." ;;
+  needs_key) echo "[watch] Run /watch to set up free local Whisper, add an API key, or use captions/--no-whisper." ;;
+  needs_install_and_key) echo "[watch] Setup incomplete: run /watch to install tools and choose local Whisper, an API key, or captions/--no-whisper." ;;
 esac

@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from scripts.storage import read_json, write_json
 
 LIBRARY_ROOT = Path.home() / "watch" / "library"
 
@@ -16,7 +17,7 @@ _SLUG_BAD = re.compile(r"[^a-z0-9]+")
 def sanitize_title(title: str) -> str:
     """Lowercase, replace any non-[a-z0-9] run with a single dash, strip ends."""
     s = _SLUG_BAD.sub("-", title.lower()).strip("-")
-    return s or "untitled"
+    return s[:180].rstrip("-") or "untitled"
 
 
 def slug_for(meta: dict) -> str:
@@ -35,11 +36,31 @@ def cache_lookup(slug: str, source_hash: str) -> Path | None:
     meta_path = d / "meta.json"
     if not meta_path.exists():
         return None
-    try:
-        data = json.loads(meta_path.read_text())
-    except json.JSONDecodeError:
-        return None
-    return d if data.get("source_hash") == source_hash else None
+    data = read_json(meta_path)
+    return d if isinstance(data, dict) and data.get("source_hash") == source_hash else None
+
+
+def entry_for(meta: dict) -> Path:
+    """Reuse the same source/focus entry across dates and title changes.
+
+    The short suffix narrows the search, but full source/focus equality decides
+    identity. A short-hash collision must never overwrite another video's notes.
+    """
+    slug = slug_for(meta)
+    desired = LIBRARY_ROOT / slug
+    suffix = slug.rsplit("-", 1)[-1]
+    candidates = [desired, *sorted(LIBRARY_ROOT.glob(f"*-{suffix}")),
+                  *sorted(LIBRARY_ROOT.glob(f"*-{suffix}-*"))]
+    for candidate in candidates:
+        data = read_json(candidate / "meta.json")
+        if (isinstance(data, dict) and data.get("source") == meta["source"]
+                and data.get("focus_range_str", "") == meta.get("focus_range_str", "")):
+            return candidate
+    existing = read_json(desired / "meta.json")
+    if isinstance(existing, dict) and existing.get("source") is not None:
+        identity = meta["source"] + "|" + meta.get("focus_range_str", "")
+        return LIBRARY_ROOT / f"{slug}-{hashlib.sha256(identity.encode()).hexdigest()[:16]}"
+    return desired
 
 
 def write_manifest(
@@ -64,4 +85,4 @@ def write_manifest(
         ),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    write_json(path, payload)

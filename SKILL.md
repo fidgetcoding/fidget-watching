@@ -21,7 +21,7 @@ Run on every `/watch` invocation:
 python3 "${CLAUDE_SKILL_DIR}/scripts/setup.py" --check
 ```
 
-Exit codes: `0` ready (silent — proceed), `2` missing binaries, `3` missing API key, `4` both. On non-zero, run the installer:
+Exit codes: `0` ready (silent — proceed), `2` missing binaries, `3` no Whisper backend, `4` missing binaries and backend. On non-zero, run the installer:
 
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/scripts/setup.py"
@@ -45,7 +45,7 @@ If no backend is configured, use `AskUserQuestion` to ask whether the user wants
 
 ## Channel / playlist mode
 
-If `source` is a multi-video URL (yt-dlp probe returns `_type: playlist` with >1 entries), `watch.py` runs the per-video pipeline on each and writes a top-level `index.md` to `~/watch/library/channel-<slug>-<hash>/`. Defaults to the first 10 videos; override with `--limit N`. Force single-video mode (skip channel detection) with `--single`.
+If `source` is a multi-video URL (yt-dlp probe returns `_type: playlist` or `multi_video`, including a single entry), `watch.py` runs the per-video pipeline on each and writes a top-level `index.md` to `~/watch/library/channel-<slug>-<hash>/`. Defaults to the first 10 videos; override with `--limit N`, applied during probing. A failed item makes the batch exit nonzero (5 for a login failure, otherwise 1); read the index for completed videos before retrying. Force single-video mode (skip channel detection) with `--single`.
 
 After channel runs, write a `synthesis.md` (in the channel dir, alongside `index.md`) that fills the `## Cross-channel synthesis` section in `index.md`: recurring hooks, thumbnail formulas, script structures, what's trending, and the 3 most cloneable moves. You don't need to write a notes.md per video synthesis (each video already got its own).
 
@@ -180,7 +180,7 @@ def forward(x):
 
 ## Re-runs
 
-If the user re-watches the same URL, the script reuses the cached download, transcript, and scenes. Only frames + notes regenerate. To force a full re-run, delete `<library_dir>/meta.json` first.
+If the user re-watches the same source and focus window, the script reuses the existing entry across dates, including cached download, transcript, raw scenes, and matching frames. Changed extraction settings or local source size/mtime invalidate affected caches. Missing or malformed caches are retried. A competing writer to that entry exits with a retry message. To force a full re-run, delete `<library_dir>/meta.json` first.
 
 ## Failure modes
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -26,7 +27,8 @@ def probe_duration(path: Path) -> float:
         capture_output=True, text=True, check=False,
     )
     try:
-        return float(proc.stdout.strip())
+        duration = float(proc.stdout.strip())
+        return duration if math.isfinite(duration) and duration > 0 else 0.0
     except ValueError:
         return 0.0
 
@@ -54,7 +56,7 @@ def resolve_source(source: str, focus_range: Optional[tuple[float, float]]) -> d
             "focus_range_str": focus_str,
         }
     p = Path(source).expanduser().resolve()
-    if not p.exists():
+    if not p.is_file():
         raise FileNotFoundError(f"local file not found: {p}")
     proc = subprocess.run(
         [
@@ -71,6 +73,7 @@ def resolve_source(source: str, focus_range: Optional[tuple[float, float]]) -> d
         "duration_s": duration,
         "source": str(p),
         "is_url": False,
-        "source_hash": hash_source(str(p)),
+        # A recording edited/replaced at the same path needs fresh derived data.
+        "source_hash": hash_source(f"{p}|{p.stat().st_size}|{p.stat().st_mtime_ns}"),
         "focus_range_str": focus_str,
     }

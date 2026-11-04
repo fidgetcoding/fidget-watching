@@ -7,9 +7,10 @@ its one-frame-every-45-seconds guarantee to the budget.
 """
 from __future__ import annotations
 
-import json
 import math
 from pathlib import Path
+
+from scripts.storage import write_json
 
 # Frames per minute allowed in each stretch of the video: (minutes up to, rate).
 _CURVE = ((15.0, 6.0), (60.0, 2.5), (math.inf, 1.5))
@@ -125,4 +126,4 @@ def format_cost(cost: dict) -> str:
 
 
 def write_cost(path: Path, cost: dict) -> None:
-    path.write_text(json.dumps(cost, indent=2))
+    write_json(path, cost)

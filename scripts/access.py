@@ -53,7 +53,10 @@ _PAYWALL_RX = re.compile(
 
 # yt-dlp doesn't print cookies unless someone has --verbose in their config, and then
 # the request headers carry them. Nothing with a cookie in it reaches our output.
-_COOKIE_LINE_RX = re.compile(r"^.*\b(set-)?cookies?\s*[:=].*$", re.IGNORECASE | re.MULTILINE)
+_COOKIE_LINE_RX = re.compile(
+    r"""^.*\b(?:(?:set-)?cookies?|authorization)["']?\s*[:=].*$""",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 _SITE_NAMES = {
     "instagram.com": "Instagram",

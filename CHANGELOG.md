@@ -4,6 +4,18 @@ All notable changes to this skill (originally `claude-watch`, renamed `watch` in
 
 ## [Unreleased]: fidgetcoding fork
 
+### Fixed (2026-11-04 maintenance)
+- Validate numeric options and focus windows before processing; reject nonfinite values and zero coverage intervals.
+- Recover missing media and damaged caches. Cache raw scene detections by threshold, reuse valid frames, and invalidate edited local files.
+- Reuse source/focus entries across dates and title changes; check full identity before reusing a short-hash directory.
+- Stage new frames before replacing previous images, reject empty ffmpeg output, serialize writers per entry, and atomically replace generated JSON.
+- Apply playlist limits during probing; support single-entry, nested and unavailable entries; deduplicate videos and report failed batches with nonzero exit codes.
+- Correct fractional caption timestamps, decode HTML entities, and preserve repeated speech after pauses.
+- Keep section cuts ordered and invalidate section notes when transcript content or the local source changes.
+- Keep Whisper uploads below the decimal 25 MB cap; close HTTP error responses, validate retry waits, and report malformed local output as backend errors.
+- Install the ffmpeg package for ffprobe, parse setup booleans correctly, and mention free local Whisper/captions in startup guidance.
+- Isolate tests from user credentials, cookie configuration and installed models.
+
 ### Fixed
 - **The local whisper.cpp route works now.** `whisper-cli` can't read the m4a `watch.py` extracts, and it exits 0 anyway, so every local run ended in `transcript_source: none`. The audio now goes through WAV first. Dropping `-nt` also brings back real segment timestamps instead of 30-second windows.
 - **Scene frames land after the transition.** They were grabbed on the cut, so soft transitions came out as blurs.

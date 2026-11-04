@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import re
+import html
+import math
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -17,7 +19,16 @@ _TS_RX = re.compile(
 
 
 def _ts_to_s(h: str | None, m: str, s: str, ms: str | None) -> float:
-    return (int(h) if h else 0) * 3600 + int(m) * 60 + int(s) + (int(ms) / 1000.0 if ms else 0.0)
+    return (int(h) if h else 0) * 3600 + int(m) * 60 + int(s) + (float(f"0.{ms}") if ms else 0.0)
+
+
+def valid_cues(cues) -> bool:
+    if not isinstance(cues, list):
+        return False
+    return all(isinstance(c, dict) and isinstance(c.get("text"), str)
+               and all(isinstance(c.get(k), (int, float)) and math.isfinite(c[k])
+                       for k in ("t_start", "t_end"))
+               and 0 <= c["t_start"] <= c["t_end"] for c in cues)
 
 
 def parse_vtt(text: str) -> list[dict]:
@@ -37,7 +48,7 @@ def parse_vtt(text: str) -> list[dict]:
         while i < len(lines) and lines[i].strip():
             text_lines.append(re.sub(r"<[^>]+>", "", lines[i]).strip())
             i += 1
-        joined = " ".join(t for t in text_lines if t).strip()
+        joined = html.unescape(" ".join(t for t in text_lines if t)).strip()
         if joined:
             cues.append({"t_start": t_start, "t_end": t_end, "text": joined})
     return cues
@@ -62,6 +73,10 @@ def dedupe_cues(cues: list[dict]) -> list[dict]:
             out.append(dict(c))
             continue
         prev = out[-1]
+        # Similar text separated by a pause is repeated speech, not rolling text.
+        if c["t_start"] > prev["t_end"] + 0.1:
+            out.append(dict(c))
+            continue
         # 1. Identical
         if prev["text"] == c["text"]:
             prev["t_end"] = max(prev["t_end"], c["t_end"])
@@ -131,6 +146,7 @@ def fetch_native_captions(video_url: str, work_dir: Path) -> Optional[Path]:
         "yt-dlp",
         *access.ytdlp_auth_args(),
         "--skip-download",
+        "--no-playlist",
         "--write-subs",
         "--write-auto-subs",
         "--sub-langs", "en.*",
@@ -155,7 +171,7 @@ def extract_audio_for_whisper(video: Path, out_audio: Path) -> None:
             "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k",
             str(out_audio),
         ],
-        check=True,
+        check=True, capture_output=True,
     )
 
 

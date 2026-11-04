@@ -178,7 +178,7 @@ def test_channel_run_prints_the_steps_once_and_still_writes_the_index(tmp_path):
     )
     env, _ = _fake_ytdlp_env(tmp_path, script)
     proc = _watch("https://www.instagram.com/creator/", tmp_path, env)
-    assert proc.returncode == 0, proc.stderr
+    assert proc.returncode == access.EXIT_LOGIN_REQUIRED, proc.stderr
     assert proc.stderr.count("FAILED: login required") == 2
     assert proc.stderr.count("wants a login") == 1
     assert "videos_failed: 2" in proc.stdout

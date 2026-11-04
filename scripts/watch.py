@@ -8,7 +8,8 @@ rolls up the channel.
 from __future__ import annotations
 
 import argparse
-import json
+import math
+import tempfile
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -33,18 +34,25 @@ from scripts import frames as frames_mod
 from scripts import setup as setup_mod
 from scripts import channel as channel_mod
 from scripts import whisper
+from scripts.storage import entry_lock, read_json, write_json
 
 
 def _parse_ts(s: str) -> float:
     """Accept SS, MM:SS, or HH:MM:SS."""
     parts = s.split(":")
-    if len(parts) == 1:
-        return float(parts[0])
-    if len(parts) == 2:
-        return int(parts[0]) * 60 + float(parts[1])
-    if len(parts) == 3:
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
-    raise ValueError(f"bad timestamp: {s}")
+    if not 1 <= len(parts) <= 3:
+        raise ValueError(f"bad timestamp: {s}")
+    values = [float(part) for part in parts]
+    if any(not math.isfinite(v) or v < 0 for v in values):
+        raise ValueError(f"timestamp must be finite and nonnegative: {s}")
+    if any(v >= 60 for v in values[1:]) or any(not v.is_integer() for v in values[:-1]):
+        raise ValueError(f"bad timestamp: {s}")
+    result = 0.0
+    for value in values:
+        result = result * 60 + value
+    if not math.isfinite(result):
+        raise ValueError(f"timestamp is too large: {s}")
+    return result
 
 
 def _focus_range(args) -> tuple[float, float] | None:
@@ -52,6 +60,8 @@ def _focus_range(args) -> tuple[float, float] | None:
         return None
     s = _parse_ts(args.start) if args.start else 0.0
     e = _parse_ts(args.end) if args.end else 1e12  # clamped later by duration
+    if e <= s:
+        raise ValueError("focus end must be after start")
     return (s, e)
 
 
@@ -60,10 +70,15 @@ def _run_one_video(source: str, args) -> dict:
     focus = _focus_range(args)
     meta = resolve_mod.resolve_source(source, focus_range=focus)
     meta["watched_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    slug = lib.slug_for(meta)
-    work = lib.LIBRARY_ROOT / slug
-    work.mkdir(parents=True, exist_ok=True)
+    work = lib.entry_for(meta)
+    slug = work.name
+    with entry_lock(work):
+        return _process_video(source, args, meta, focus, slug, work)
 
+
+def _process_video(source, args, meta, focus, slug, work) -> dict:
+    if focus and meta["duration_s"] > 0 and focus[0] >= meta["duration_s"]:
+        raise ValueError("focus start must be before the video duration")
     if meta["duration_s"] > 0:
         window_s = meta["duration_s"] if not focus else min(focus[1], meta["duration_s"]) - focus[0]
         print(budget_mod.early_estimate(window_s, width_px=args.resolution, override=args.max_frames),
@@ -75,9 +90,11 @@ def _run_one_video(source: str, args) -> dict:
 
     # ---- Stage 2: download ----
     src_dir = work / "source"
-    if cached and (src_dir.glob("video.*")):
-        video = next(iter(src_dir.glob("video.*")))
+    media = download_mod.media_files(src_dir)
+    if cached and media:
+        video = media[0]
     else:
+        cached = None
         if meta["is_url"]:
             video = download_mod.download_video(meta["source"], src_dir, basename="video")
         else:
@@ -85,6 +102,12 @@ def _run_one_video(source: str, args) -> dict:
     # Direct links often report no duration, and everything below depends on it.
     if meta["duration_s"] <= 0:
         meta["duration_s"] = resolve_mod.probe_duration(video)
+    if not math.isfinite(meta["duration_s"]) or meta["duration_s"] <= 0:
+        raise ValueError("video duration must be finite and positive")
+    if focus:
+        focus = (focus[0], min(focus[1], meta["duration_s"]))
+        if focus[0] >= focus[1]:
+            raise ValueError("focus start must be before the video duration")
 
     # ---- Stage 3: transcribe ----
     transcript_path = work / "transcript.json"
@@ -92,8 +115,11 @@ def _run_one_video(source: str, args) -> dict:
     # the backend failed), so it earns another try instead of sticking forever.
     transcript: list[dict] = []
     if cached and transcript_path.exists():
-        transcript = json.loads(transcript_path.read_text())
+        transcript = read_json(transcript_path, [])
+        if not transcribe_mod.valid_cues(transcript):
+            transcript = []
     if not transcript:
+        (work / "transcript.vtt").unlink(missing_ok=True)
         if meta["is_url"]:
             vtt = transcribe_mod.fetch_native_captions(meta["source"], work / "subs")
             if vtt:
@@ -128,7 +154,7 @@ def _run_one_video(source: str, args) -> dict:
                 except whisper.WhisperError as e:
                     print(f"Whisper failed ({backend}): {e}", file=sys.stderr)
         transcript = transcribe_mod.insert_speaker_breaks(transcript)
-        transcript_path.write_text(json.dumps(transcript, indent=2, ensure_ascii=False))
+        write_json(transcript_path, transcript)
 
     if focus:
         transcript_for_window = transcribe_mod.slice_to_window(
@@ -139,18 +165,27 @@ def _run_one_video(source: str, args) -> dict:
 
     # ---- Stage 4: detect_scenes (within window if focused) ----
     scenes_path = work / "scenes.json"
-    if cached and scenes_path.exists() and not focus:
-        raw_scenes = [
-            scenes_mod.Scene(t=s["t"], score=s["score"], kind=s["kind"])
-            for s in json.loads(scenes_path.read_text())
-        ]
-    else:
+    raw_path = work / "scenes.raw.json"
+    raw_cache = read_json(raw_path, {}) if cached else {}
+    raw_scenes = None
+    if isinstance(raw_cache, dict) and raw_cache.get("threshold") == args.scene_threshold:
+        try:
+            raw_scenes = [scenes_mod.Scene(**item) for item in raw_cache["scenes"]]
+            if not raw_scenes or any(not math.isfinite(s.t) or not math.isfinite(s.score)
+                                     or s.t < 0 or s.kind != "detected" for s in raw_scenes):
+                raw_scenes = None
+        except (KeyError, TypeError, ValueError):
+            raw_scenes = None
+    if raw_scenes is None:
         raw_scenes = scenes_mod.detect_scenes(video, threshold=args.scene_threshold)
+        write_json(raw_path, {"threshold": args.scene_threshold,
+                             "scenes": [vars(s) for s in raw_scenes]})
+    raw_scenes = [s for s in raw_scenes if s.t < meta["duration_s"]]
 
     if focus:
         s0, s1 = focus
         s1 = min(s1, meta["duration_s"])
-        raw_scenes = [s for s in raw_scenes if s0 <= s.t <= s1]
+        raw_scenes = [s for s in raw_scenes if s0 <= s.t < s1]
         if not raw_scenes or raw_scenes[0].t > s0:
             raw_scenes.insert(0, scenes_mod.Scene(t=s0, score=1.0, kind="detected"))
         max_gap = min(args.max_gap, 15.0)  # focus mode: denser coverage
@@ -169,9 +204,7 @@ def _run_one_video(source: str, args) -> dict:
 
     transcript_window_path = work / "transcript.window.json"
     if focus:
-        transcript_window_path.write_text(
-            json.dumps(transcript_for_window, indent=2, ensure_ascii=False)
-        )
+        write_json(transcript_window_path, transcript_for_window)
         transcript_consumer_path = "transcript.window.json"
     else:
         transcript_consumer_path = "transcript.json"
@@ -190,24 +223,37 @@ def _run_one_video(source: str, args) -> dict:
     print(budget_mod.format_cost(cost), flush=True)
     print(flush=True)
 
-    if not focus:
-        scenes_path.write_text(json.dumps(
-            [{"t": s.t, "score": s.score, "kind": s.kind} for s in capped],
-            indent=2,
-        ))
-
-    # ---- Stage 5+6: extract frames ----
-    frames_dir = work / "frames"
-    # Wipe any prior frames so re-runs don't accumulate orphans.
-    if frames_dir.exists():
-        for f in frames_dir.iterdir():
-            f.unlink()
-    raw_frame_records = frames_mod.extract_frames(
-        video, capped, out_dir=frames_dir, width_px=args.resolution
-    )
+    # Cache extraction inputs independently of the public manifest. Build a fresh
+    # directory first so a failed ffmpeg run leaves the previous images intact.
+    frame_key = {"version": 1, "source_hash": meta["source_hash"],
+                 "resolution": args.resolution, "scenes": [vars(s) for s in capped]}
     frame_records = [
-        {**fr, "path": f"frames/{fr['path']}"} for fr in raw_frame_records
+        {"index": i, "t": scene.t, "kind": scene.kind,
+         "path": f"frames/{frames_mod.format_filename(i, scene.t)}"}
+        for i, scene in enumerate(capped, 1)
     ]
+    frames_dir = work / "frames"
+    frames_valid = (cached and read_json(work / "frames.cache.json") == frame_key
+                    and all((work / fr["path"]).is_file()
+                            and (work / fr["path"]).stat().st_size > 0 for fr in frame_records))
+    if not frames_valid:
+        with tempfile.TemporaryDirectory(prefix=".frames-", dir=work) as td:
+            staging = Path(td) / "new"
+            raw_frame_records = frames_mod.extract_frames(
+                video, capped, out_dir=staging, width_px=args.resolution
+            )
+            frame_records = [{**fr, "path": f"frames/{fr['path']}"} for fr in raw_frame_records]
+            old = Path(td) / "old"
+            try:
+                if frames_dir.exists():
+                    frames_dir.rename(old)
+                staging.rename(frames_dir)
+            except BaseException:
+                if old.exists() and not frames_dir.exists():
+                    old.rename(frames_dir)
+                raise
+        write_json(work / "frames.cache.json", frame_key)
+    write_json(scenes_path, [vars(s) for s in capped])
 
     # ---- Long videos: one section at a time ----
     section_plan: list[dict] = []
@@ -228,12 +274,12 @@ def _run_one_video(source: str, args) -> dict:
             transcript=transcript_for_window,
             tokens_per_frame=cost["tokens_per_frame"],
         )
-        sections_mod.write_plan(work, section_plan)
+        sections_mod.write_plan(work, section_plan, source_hash=meta["source_hash"])
     else:
         sections_mod.clear_plan(work)
 
     # ---- Stage 7: emit manifest + meta ----
-    (work / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+    write_json(work / "meta.json", meta)
     lib.write_manifest(
         path=work / "manifest.json",
         meta=meta,
@@ -307,7 +353,7 @@ def _run_channel(source: str, args, probe: dict) -> int:
     channel_dir = lib.LIBRARY_ROOT / channel_mod.channel_slug(probe, source)
     channel_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"=== watch channel ===", flush=True)
+    print("=== watch channel ===", flush=True)
     print(f"channel: {channel_title!r}", flush=True)
     print(f"source: {source}", flush=True)
     print(f"videos_found: {len(probe.get('entries') or [])}", flush=True)
@@ -369,6 +415,8 @@ def _run_channel(source: str, args, probe: dict) -> int:
             print(f"  - {r['title']} -> {r['library_dir']}")
     if login_help:
         print(f"\n{login_help}", file=sys.stderr)
+    if any(r.get("status") != "ok" for r in results):
+        return access.EXIT_LOGIN_REQUIRED if login_help else 1
     return 0
 
 
@@ -399,6 +447,13 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     try:
+        _focus_range(args)
+        for name in ("max_frames", "resolution", "max_gap", "section_minutes", "limit"):
+            value = getattr(args, name)
+            if value is not None and (not math.isfinite(value) or value <= 0):
+                raise ValueError(f"--{name.replace('_', '-')} must be finite and positive")
+        if not math.isfinite(args.scene_threshold) or not 0 <= args.scene_threshold <= 1:
+            raise ValueError("--scene-threshold must be between 0 and 1")
         access.use_browser_cookies(args.cookies_from_browser)
     except ValueError as e:
         p.error(str(e))
@@ -411,15 +466,16 @@ def main(argv: list[str] | None = None) -> int:
         # Channel/playlist dispatch: only for URLs, only when not forced single.
         if not args.single and resolve_mod.is_url(args.source):
             try:
-                probe = channel_mod.probe(args.source)
-                if channel_mod.is_channel_or_playlist(probe):
-                    return _run_channel(args.source, args, probe)
+                probe = channel_mod.probe(args.source, limit=args.limit)
             except (access.LoginRequired, access.Blocked):
                 raise
             except Exception as e:
                 # Probe failed, so fall through to the single-video path.
                 print(f"channel probe failed, treating as single video: {e}",
                       file=sys.stderr)
+            else:
+                if channel_mod.is_channel_or_playlist(probe):
+                    return _run_channel(args.source, args, probe)
 
         # Single-video path.
         result = _run_one_video(args.source, args)
@@ -429,6 +485,12 @@ def main(argv: list[str] | None = None) -> int:
     except access.Blocked as e:
         print(e, file=sys.stderr)
         return access.EXIT_BLOCKED
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as e:
+        print(f"watch failed: {access.scrub(str(e))}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("watch cancelled", file=sys.stderr)
+        return 130
     _print_video_manifest(result, args)
     return 0
 

@@ -30,7 +30,7 @@ LOCAL_BIN = "whisper-cli"
 
 # Groq and OpenAI both cap uploads at 25 MB. Stay under it with room for the
 # multipart wrapper.
-MAX_UPLOAD_BYTES = 24 * 1024 * 1024
+MAX_UPLOAD_BYTES = 24_000_000
 # Neighbouring chunks share this much audio, so a word cut at one chunk's edge is
 # whole in the other.
 CHUNK_OVERLAP_S = 5.0
@@ -126,7 +126,7 @@ def _post(url: str, audio: Path, *, model: str, api_key: str) -> list[dict]:
             with urlopen(req, timeout=300) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
             segs = payload.get("segments") or []
-            return [
+            result = [
                 {
                     "t_start": float(s["start"]),
                     "t_end": float(s["end"]),
@@ -134,9 +134,15 @@ def _post(url: str, audio: Path, *, model: str, api_key: str) -> list[dict]:
                 }
                 for s in segs
             ]
+            if any(not math.isfinite(s["t_start"]) or not math.isfinite(s["t_end"])
+                   or not 0 <= s["t_start"] <= s["t_end"] for s in result):
+                raise ValueError("invalid segment timestamps")
+            return result
         except HTTPError as e:
             if e.code in RETRY_STATUSES and attempt < MAX_ATTEMPTS:
-                time.sleep(_retry_wait(e, attempt))
+                wait = _retry_wait(e, attempt)
+                e.close()
+                time.sleep(wait)
                 continue
             # Surface the API's JSON error body so users see "Invalid API Key" etc.
             detail = ""
@@ -144,6 +150,8 @@ def _post(url: str, audio: Path, *, model: str, api_key: str) -> list[dict]:
                 detail = e.read().decode("utf-8", errors="replace")[:500]
             except Exception:
                 pass
+            finally:
+                e.close()
             raise WhisperError(f"HTTP {e.code} {e.reason}: {detail}") from e
         except Exception as e:
             # Network, JSON parse, missing keys on segments, all surface as WhisperError.
@@ -155,6 +163,8 @@ def _retry_wait(err: HTTPError, attempt: int) -> float:
     try:
         wait = float(err.headers.get("Retry-After"))
     except (AttributeError, TypeError, ValueError):
+        wait = 2.0 ** attempt
+    if not math.isfinite(wait) or wait < 0:
         wait = 2.0 ** attempt
     return min(wait, MAX_RETRY_WAIT_S)
 
@@ -326,7 +336,7 @@ def local_available(model_path: Optional[Path]) -> bool:
     """True if whisper-cli is on PATH and the model file exists."""
     if not shutil.which(LOCAL_BIN):
         return False
-    return bool(model_path and Path(model_path).expanduser().exists())
+    return bool(model_path and Path(model_path).expanduser().is_file())
 
 
 def transcribe_local(audio: Path, *, model_path: Path) -> list[dict]:
@@ -336,7 +346,7 @@ def transcribe_local(audio: Path, *, model_path: Path) -> list[dict]:
     into the same segment shape as the HTTP backends.
     """
     model = Path(model_path).expanduser()
-    if not model.exists():
+    if not model.is_file():
         raise WhisperError(f"whisper.cpp model not found: {model}")
     with tempfile.TemporaryDirectory() as td:
         # whisper-cli reads WAV, not the m4a watch.py extracts: given an m4a it
@@ -375,15 +385,19 @@ def transcribe_local(audio: Path, *, model_path: Path) -> list[dict]:
             )
         try:
             payload = json.loads(json_path.read_text())
-        except json.JSONDecodeError as e:
+            segs = payload.get("transcription") or []
+            result = [
+                {
+                    "t_start": float(s["offsets"]["from"]) / 1000.0,
+                    "t_end": float(s["offsets"]["to"]) / 1000.0,
+                    "text": s["text"].strip(),
+                }
+                for s in segs
+                if s.get("text", "").strip()
+            ]
+            if any(not math.isfinite(s["t_start"]) or not math.isfinite(s["t_end"])
+                   or not 0 <= s["t_start"] <= s["t_end"] for s in result):
+                raise ValueError("invalid segment timestamps")
+            return result
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
             raise WhisperError(f"whisper-cli JSON parse failed: {e}") from e
-        segs = payload.get("transcription") or []
-        return [
-            {
-                "t_start": float(s["offsets"]["from"]) / 1000.0,
-                "t_end": float(s["offsets"]["to"]) / 1000.0,
-                "text": s["text"].strip(),
-            }
-            for s in segs
-            if s.get("text", "").strip()
-        ]

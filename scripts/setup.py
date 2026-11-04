@@ -69,11 +69,11 @@ def _resolve_local_model(env: dict[str, str]) -> Optional[Path]:
     raw = env.get("WHISPER_CPP_MODEL")
     if raw:
         candidate = Path(raw).expanduser()
-        return candidate if candidate.exists() else None
-    if DEFAULT_LOCAL_MODEL.exists():
+        return candidate if candidate.is_file() else None
+    if DEFAULT_LOCAL_MODEL.is_file():
         return DEFAULT_LOCAL_MODEL
     for p in EXTRA_LOCAL_MODEL_PATHS:
-        if p.exists():
+        if p.is_file():
             return p
     return None
 
@@ -107,7 +107,7 @@ def status_for() -> dict:
         ),
         "config_file": str(ENV_PATH),
         "platform": platform.system().lower(),
-        "first_run": not env.get("SETUP_COMPLETE"),
+        "first_run": env.get("SETUP_COMPLETE", "").lower() not in ("true", "1", "yes"),
     }
 
 
@@ -138,25 +138,26 @@ def _print_install_instructions() -> None:
     missing = [b for b in REQUIRED_BINS if not _which(b)]
     if not missing:
         return
+    packages = list(dict.fromkeys("ffmpeg" if b == "ffprobe" else b for b in missing))
     if sysname == "darwin":
         # macOS — try brew automatically
         if _which("brew"):
             print(f"Installing missing tools via brew: {', '.join(missing)}", file=sys.stderr)
-            subprocess.run(["brew", "install", *missing], check=False)
+            subprocess.run(["brew", "install", *packages], check=False)
             return
         print("Homebrew not found. Install brew, then re-run setup.py.", file=sys.stderr)
     elif sysname == "linux":
         print("Run one of:", file=sys.stderr)
-        print(f"  sudo apt-get install -y {' '.join(missing)}", file=sys.stderr)
-        print(f"  sudo dnf install -y {' '.join(missing)}", file=sys.stderr)
-        print(f"  pipx install yt-dlp  # (if 'yt-dlp' isn't in apt)", file=sys.stderr)
+        print(f"  sudo apt-get install -y {' '.join(packages)}", file=sys.stderr)
+        print(f"  sudo dnf install -y {' '.join(packages)}", file=sys.stderr)
+        print("  pipx install yt-dlp  # (if 'yt-dlp' isn't in apt)", file=sys.stderr)
     elif sysname == "windows":
         print("Run:", file=sys.stderr)
-        for b in missing:
+        for b in packages:
             if b == "yt-dlp":
-                print(f"  pip install --user yt-dlp", file=sys.stderr)
+                print("  pip install --user yt-dlp", file=sys.stderr)
             else:
-                print(f"  winget install --id Gyan.FFmpeg", file=sys.stderr)
+                print("  winget install --id Gyan.FFmpeg", file=sys.stderr)
     else:
         print(f"Unsupported platform '{sysname}'. Install manually: {', '.join(missing)}", file=sys.stderr)
 

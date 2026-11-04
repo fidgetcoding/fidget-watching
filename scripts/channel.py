@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from scripts import access
+from scripts.storage import write_text
 
 
 _SLUG_BAD = re.compile(r"[^a-z0-9]+")
@@ -28,11 +29,12 @@ def _short_hash(text: str, *, n: int = 4) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:n]
 
 
-def probe(url: str) -> dict:
+def probe(url: str, *, limit: int = 10) -> dict:
     """Run yt-dlp's flat-playlist probe. Returns the parsed JSON or raises."""
     proc = subprocess.run(
-        ["yt-dlp", *access.ytdlp_auth_args(), "--flat-playlist", "--dump-single-json", url],
-        capture_output=True, text=True, check=False,
+        ["yt-dlp", *access.ytdlp_auth_args(), "--flat-playlist", "--playlist-end", str(limit),
+         "--dump-single-json", url],
+        capture_output=True, text=True, check=False, timeout=120,
     )
     if proc.returncode != 0:
         access.raise_for_failure(url, proc.stderr)
@@ -41,11 +43,8 @@ def probe(url: str) -> dict:
 
 
 def is_channel_or_playlist(probe_info: dict) -> bool:
-    """A probe result is multi-video if it's a playlist with >1 entries."""
-    if probe_info.get("_type") not in ("playlist", "multi_video"):
-        return False
-    entries = probe_info.get("entries") or []
-    return len(entries) > 1
+    """Even an empty or single-item playlist belongs on the batch path."""
+    return probe_info.get("_type") in ("playlist", "multi_video")
 
 
 def enumerate_videos(probe_info: dict, *, limit: Optional[int] = None) -> list[dict]:
@@ -55,20 +54,30 @@ def enumerate_videos(probe_info: dict, *, limit: Optional[int] = None) -> list[d
     - Plain playlists: entries = [{id, title, url, duration, ...}, ...]
     - Channel tabs: entries = [{_type: "playlist", entries: [...]}, ...] — flatten one level.
     """
-    raw = probe_info.get("entries") or []
-    flat: list[dict] = []
-    for e in raw:
-        if e.get("_type") == "playlist" and e.get("entries"):
-            flat.extend(e["entries"])
-        else:
-            flat.append(e)
+    if limit is not None and limit <= 0:
+        return []
+
+    def entries(items):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("_type") in ("playlist", "multi_video"):
+                yield from entries(item.get("entries") or [])
+            else:
+                yield item
 
     out: list[dict] = []
-    for e in flat:
+    seen = set()
+    for e in entries(probe_info.get("entries") or []):
         vid = e.get("id")
         if not vid:
             continue
-        url = e.get("url") or f"https://youtu.be/{vid}"
+        url = e.get("webpage_url") or e.get("url") or f"https://youtu.be/{vid}"
+        if not url.startswith(("http://", "https://")):
+            url = f"https://youtu.be/{vid}"
+        if url in seen:
+            continue
+        seen.add(url)
         out.append({
             "id": vid,
             "title": e.get("title") or vid,
@@ -140,5 +149,5 @@ def write_index(
                  "and the 3 most cloneable moves._")
     lines.append("")
 
-    index_path.write_text("\n".join(lines))
+    write_text(index_path, "\n".join(lines))
     return index_path

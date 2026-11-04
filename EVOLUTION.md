@@ -98,3 +98,9 @@ The API chunking has only been tested locally, against mocked APIs.
 - `git log` and `git diff ade7d61 HEAD` on `fidgetcoding/fidget-watching` and `devinilabs/claude-watch`.
 - `CHANGELOG.md`, `LICENSE`, `tests/e2e/fresh_watch.sh`, and the bodies of the commits above.
 - CI runs on the repo's Actions tab.
+
+## Maintenance pass (2026-11-04, local branch)
+
+An execution-path audit found missing-media cache crashes, scene caches that reused capped results across settings, nonexistent frames accepted after ffmpeg exit 0, unbounded channel probes, and setup attempting to install a separate ffprobe package. The baseline suite on this Mac was 183 passed and one failure caused by a test reading the developer's yt-dlp cookie configuration.
+
+The maintenance changes add cache validation and source invalidation, reuse matching frames, stage replacements, serialize library writers, validate options, limit playlist probes, fix caption and section edge cases, and isolate test settings. The generated ten-second fixture previously launched three ffmpeg frame extractions on each warm run. Verification uses local generated media and mocked backends; no live audio devices or paid API calls.
