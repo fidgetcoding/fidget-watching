@@ -2,27 +2,36 @@
 
 # fidget-watching
 
-A fork of [devinilabs/claude-watch](https://github.com/devinilabs/claude-watch). devinilabs built the pipeline. I added the key-free whisper.cpp route, channel and playlist mode, and the fixes in the [changelog](CHANGELOG.md).
+**Turn any tutorial or lecture video into structured study notes.** Paste a URL, walk away, come back to a markdown file with embedded screenshots, timestamped transcript, and Claude's synthesis, saved to a persistent library.
 
-**Turn any tutorial or lecture video into structured study notes.** Paste a URL, walk away, come back to a markdown file with embedded screenshots, timestamped transcript, and Claude's synthesis — saved to a persistent library.
+A fork of [devinilabs/claude-watch](https://github.com/devinilabs/claude-watch). devinilabs built the pipeline. I added the key-free whisper.cpp route, channel and playlist mode, long-video sections, a frame budget that scales, opt-in browser login, and the fixes in the [changelog](CHANGELOG.md).
+
+Short version: [ESSENCE.md](ESSENCE.md). How it got built: [EVOLUTION.md](EVOLUTION.md).
 
 ```
 /watch https://youtu.be/<lecture> backprop intuition
 ```
 
-More: [ESSENCE.md](ESSENCE.md) · [EVOLUTION.md](EVOLUTION.md)
-
 ## Why I forked it
 
-I installed claude-watch and it asked for an API key. My exact reaction: "i thought i have audio downloaders setup so i dont need these stupid keys. dont i already have ffmpeg and whisper?" I did, so now it uses them. Then: "can i do it to a whole youtube cahnnel?" Now it can do that too. The idea is devinilabs', and it's a great one: scene-aware frames, a library you can come back to, and a notes file instead of answers lost in chat. Everything I changed is in the [changelog](CHANGELOG.md).
+I installed claude-watch and it asked for an API key. My exact reaction: "I thought I have audio downloaders set up so I don't need these stupid keys. Don't I already have ffmpeg and Whisper?" I did, so now it uses them. Then: "Can I do it to a whole YouTube channel?" Now it can do that too. The idea is devinilabs', and it's a great one: scene-aware frames, a library you can come back to, and a notes file instead of answers lost in chat. Everything I changed is in the [changelog](CHANGELOG.md).
 
 ## Install
 
 | Surface | Command |
 |---|---|
 | **Claude Code** | `/plugin marketplace add fidgetcoding/fidget-watching` then `/plugin install watch@watch` |
-| **claude.ai** (web) | Download `watch.skill` from the latest release → Settings → Capabilities → Skills → `+` |
+| **claude.ai** (web) | No release is published yet. Clone the repo, run `bash scripts/build-skill.sh`, then upload `dist/watch.skill` under Settings → Capabilities → Skills → `+` |
 | **Codex** | `git clone https://github.com/fidgetcoding/fidget-watching ~/.codex/skills/watch` |
+
+On your first `/watch`, setup checks for `yt-dlp` and `ffmpeg`. On macOS it installs them with Homebrew if you have it; on Linux or Windows it prints the commands to run. For free transcripts when a video has no captions, also install whisper.cpp and give it a model:
+
+```bash
+brew install whisper-cpp
+mkdir -p ~/.config/watch/models
+curl -L -o ~/.config/watch/models/ggml-base.en.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+```
 
 ## What it does
 
@@ -30,13 +39,13 @@ I installed claude-watch and it asked for an API key. My exact reaction: "i thou
 2. Detects scene changes with `ffmpeg`. Inserts coverage-floor frames every 45s across long static gaps so a lecture with one slide for 5 minutes still gets ~7 frames, not 1.
 3. Pulls a timestamped transcript: captions first (free), then local whisper.cpp if you have it, then the Whisper API (Groq preferred, OpenAI alt).
 4. Hands frames + transcript to Claude. Claude `Read`s every frame as an image and writes `notes.md` to a strict template:
-   - `## TLDR` — 3-4 sentence synthesis
-   - `## Key Concepts` — bulleted with timestamps
-   - `## Notes` — one section per scene with embedded screenshot, on-screen text, what was said, Claude's synthesis
-   - `## Code & Commands` — every code-on-screen frame transcribed into a runnable fenced block
+   - `## TLDR`: a 3-4 sentence synthesis
+   - `## Key Concepts`: bulleted, with timestamps
+   - `## Notes`: one section per scene with embedded screenshot, on-screen text, what was said, Claude's synthesis
+   - `## Code & Commands`: every code-on-screen frame transcribed into a runnable fenced block
    - `## Diagrams Referenced`, `## Open Questions`
 5. Over 30 minutes, it does that part by part and merges the result, so the end of a long video gets the same attention as the start.
-6. Saves everything to `~/watch/library/<slug>/` — re-running the same URL is a cache hit.
+6. Saves everything to `~/watch/library/<slug>/`. Re-running the same URL is a cache hit.
 
 ## Usage
 
@@ -136,8 +145,8 @@ python3 -m pytest                         # full suite; uses temporary user sett
 bash scripts/build-skill.sh               # → dist/watch.skill (claude.ai bundle)
 ```
 
-Releasing: tag `vX.Y.Z`, push the tag — CI builds and attaches `watch.skill`.
+Releasing: tag `vX.Y.Z` and push the tag, and CI builds `watch.skill` and attaches it to the release.
 
 ## License
 
-MIT. The `LICENSE` file is devinilabs' notice, unchanged, as MIT requires. Built on `yt-dlp`, `ffmpeg`, and Claude's multimodal `Read` tool. Whisper transcription via [Groq](https://groq.com) or [OpenAI](https://openai.com).
+MIT. The `LICENSE` file is devinilabs' notice, unchanged, as MIT requires. Built on `yt-dlp`, `ffmpeg`, and Claude's multimodal `Read` tool. Whisper transcription via [Groq](https://groq.com) or [OpenAI](https://platform.openai.com/docs/guides/speech-to-text).
