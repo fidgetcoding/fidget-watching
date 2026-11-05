@@ -21,7 +21,7 @@ I installed claude-watch and it asked for an API key. My exact reaction: "I thou
 | Surface | Command |
 |---|---|
 | **Claude Code** | `/plugin marketplace add fidgetcoding/fidget-watching` then `/plugin install watch@watch` |
-| **claude.ai** (web) | No release is published yet. Clone the repo, run `bash scripts/build-skill.sh`, then upload `dist/watch.skill` under Settings → Capabilities → Skills → `+` |
+| **claude.ai** (web) | Download [`watch.skill`](https://github.com/fidgetcoding/fidget-watching/releases/latest/download/watch.skill) from the [latest release](https://github.com/fidgetcoding/fidget-watching/releases/latest), then Settings → Capabilities → Skills → `+`. To build it yourself instead: clone the repo, run `bash scripts/build-skill.sh`, and upload `dist/watch.skill`. |
 | **Codex** | `git clone https://github.com/fidgetcoding/fidget-watching ~/.codex/skills/watch` |
 
 On your first `/watch`, setup checks for `yt-dlp` and `ffmpeg`. On macOS it installs them with Homebrew if you have it; on Linux or Windows it prints the commands to run. For free transcripts when a video has no captions, also install whisper.cpp and give it a model:

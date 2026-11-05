@@ -31,6 +31,8 @@ Everything else, including scene detection, the library, the notes template, the
 /watch https://youtu.be/<lecture> backprop intuition
 ```
 
+On claude.ai, download [`watch.skill`](https://github.com/fidgetcoding/fidget-watching/releases/latest/download/watch.skill) from the latest release and add it under Settings → Capabilities → Skills. To build it yourself instead, clone the repo and run `bash scripts/build-skill.sh`.
+
 For key-free transcripts: `brew install whisper-cpp`, plus a model at `~/.config/watch/models/ggml-base.en.bin`. The [README](README.md) has the full steps.
 
 **What works today.** You can read all of this on the repo's Actions tab, run at `a525969`:

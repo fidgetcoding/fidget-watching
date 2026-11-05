@@ -37,6 +37,7 @@ Then: "Can I do it to a whole YouTube channel?" and "Let's fix the script so it 
 | Nov 1 | CI proves the plugin loads and its hook fires | `d04d059` |
 | Nov 1 and 2 | Essence and build-history docs, README says why I forked it | `4c892e5`, `e723770`, `b345a88` |
 | Nov 4 | Cache recovery, one writer per library entry, input checks, isolated tests | `a525969` |
+| Nov 5 | First release, v0.1.1, with `watch.skill` attached for claude.ai | Tag `v0.1.1` |
 
 ## 4. Round by round
 
